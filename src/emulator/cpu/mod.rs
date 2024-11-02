@@ -30,7 +30,7 @@ impl<'a> CPU<'a> {
             register_y: 0,
             stack_pointer: 0xfd,
             program_counter: 0,
-            flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::BREAK_COMMAND | CpuFlags::UNUSED,
+            flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::BREAK | CpuFlags::UNUSED,
             bus,
         };
     }

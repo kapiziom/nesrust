@@ -5,7 +5,7 @@ pub trait FlagOperations {
     fn set_flag(&mut self, flag: CpuFlags, value: bool);
     fn clear_flag(&mut self, flag: CpuFlags);
 
-    fn get_flag_value(&mut self, flag: CpuFlags);
+    fn get_flag_value(&mut self, flag: CpuFlags) -> u16;
 
     fn update_zero_and_negative_flags(&mut self, result: u8);
 }

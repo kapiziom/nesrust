@@ -192,7 +192,7 @@ lazy_static! {
         OperationCode::new(0x09, "ORA", AddressingMode::Immediate, 2, 2),
         OperationCode::new(0x05, "ORA", AddressingMode::ZeroPage, 2, 3),
         OperationCode::new(0x15, "ORA", AddressingMode::ZeroPageX, 2, 4),
-        OperationCode::new(0x0D, "ORA", AddressingMode::Absolute, , 4),
+        OperationCode::new(0x0D, "ORA", AddressingMode::Absolute, 3, 4),
         OperationCode::new(0x1D, "ORA", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
         OperationCode::new(0x19, "ORA", AddressingMode::AbsoluteY, 3, 4 /* (+1 if page crossed) */),
         OperationCode::new(0x01, "ORA", AddressingMode::IndirectX, 2, 6),

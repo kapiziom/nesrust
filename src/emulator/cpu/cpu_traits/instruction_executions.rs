@@ -13,7 +13,7 @@ impl<'a> InstructionExecutions for CPU<'a> {
 
         let carry = self.get_flag_value(CpuFlags::CARRY);
 
-        let sum = self.register_a as u16 + operand as u16 + carry;
+        let sum = (self.register_a as u16) + (operand as u16) + carry;
 
         let overflow = (!(self.register_a ^ operand) & (self.register_a ^ sum as u8) & 0x80) != 0;
 
