@@ -51,6 +51,24 @@ mod tests {
     }
 
     #[test]
+    fn test_memory_write_read_u16() {
+        let mut bus = MemoryBus::new();
+
+        bus.write(0x2000, 0x42);
+        bus.write(0x2001, 0x42);
+        assert_eq!(bus.memory[0x2000], 0x42);
+        assert_eq!(bus.memory[0x2001], 0x42);
+
+        let value0 = bus.read(0x2000);
+        assert_eq!(value0, 0x42);
+        let value1 = bus.read(0x2001);
+        assert_eq!(value1, 0x42);
+
+        let value2 = bus.read_u16(0x2000);
+        assert_eq!(value2, 0x4242);
+    }
+
+    #[test]
     fn test_memory_read_write_u16() {
         let mut bus = MemoryBus::new();
         bus.write_u16(0x3000, 0x1234);
