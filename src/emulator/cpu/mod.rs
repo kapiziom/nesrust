@@ -7,15 +7,18 @@ use crate::emulator::core::cpu_bus::CpuBus;
 pub use operation_codes::*;
 pub use addressing::*;
 pub use cpu_traits::*;
+use crate::emulator::cpu::addressing_mode_operations::AddressingModeOperations;
+use crate::emulator::cpu::cpu_flags::CpuFlags;
 use crate::emulator::cpu::flag_operations::FlagOperations;
+use crate::emulator::cpu::instruction_executions::InstructionExecutions;
 
 pub struct CPU<'a> {
-    pub register_a: u8,
-    pub register_x: u8,
-    pub register_y: u8,
-    pub stack_pointer: u8,
+    pub (super) register_a: u8,
+    pub (super) register_x: u8,
+    pub (super) register_y: u8,
+    pub (super) stack_pointer: u8,
     pub program_counter: u16,
-    pub(crate) flags: cpu_flags::CpuFlags,
+    pub (super) flags: cpu_flags::CpuFlags,
     pub bus: Box<dyn CpuBus + 'a>,
 }
 
@@ -27,7 +30,7 @@ impl<'a> CPU<'a> {
             register_y: 0,
             stack_pointer: 0xfd,
             program_counter: 0,
-            flags: cpu_flags::CpuFlags::INTERRUPT_DISABLE | cpu_flags::CpuFlags::BREAK_COMMAND | cpu_flags::CpuFlags::UNUSED,
+            flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::BREAK_COMMAND | CpuFlags::UNUSED,
             bus,
         };
     }
@@ -60,35 +63,22 @@ impl<'a> CPU<'a> {
         }
     }
 
-    fn update_zero_and_negative_flags(&mut self, result: u8) {
-        self.set_flag(cpu_flags::CpuFlags::ZERO, result == 0);
-        self.set_flag(cpu_flags::CpuFlags::NEGATIVE, result & 0x80 != 0);
-    }
-
-    fn push_stack(&mut self, value: u8) {
-        self.bus.write(0x0100 + self.stack_pointer as u16, value);
-        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
-    }
-
-    fn pop_stack(&mut self) -> u8 {
-        self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        self.bus.read(0x0100 + self.stack_pointer as u16)
-    }
-
-    fn adc(&mut self, mode: &AddressingMode, program: &[u8]) {
-        let operand = self.get_operand(mode, program);
-        // TODO
-    }
-
     fn get_operand(&self, mode: &AddressingMode, program: &[u8]) -> u8 {
         match mode {
-            AddressingMode::Immediate => program[self.program_counter as usize],
-            AddressingMode::ZeroPage => {
-                let addr = program[self.program_counter as usize] as u16;
-                self.bus.read(addr)
-            },
-            _ => panic!("Unimplemented addressing mode"),
-            // TODO
+            AddressingMode::Implicit => 0,
+            AddressingMode::Accumulator => self.get_accumulator(),
+            AddressingMode::Immediate => self.get_immediate(program),
+            AddressingMode::ZeroPage => self.get_zero_page(program),
+            AddressingMode::ZeroPageX => self.get_zero_page_x(program),
+            AddressingMode::ZeroPageY => self.get_zero_page_y(program),
+            AddressingMode::Relative => self.get_relative(program),
+            AddressingMode::Absolute => self.get_absolute(program),
+            AddressingMode::AbsoluteX => self.get_absolute_x(program),
+            AddressingMode::AbsoluteY => self.get_absolute_y(program),
+            AddressingMode::Indirect => self.get_indirect(program),
+            AddressingMode::IndirectX => self.get_indirect_x(program),
+            AddressingMode::IndirectY => self.get_indirect_y(program),
+            _ => panic!("Unimplemented addressing mode")
         }
     }
 
