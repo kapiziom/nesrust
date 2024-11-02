@@ -35,3 +35,27 @@ impl CpuBus for MemoryBus {
         write_u16_core(self, addr, value)
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_read_write() {
+        let mut bus = MemoryBus::new();
+        bus.write(0x2000, 0x42);
+        let value = bus.read(0x2000);
+
+        assert_eq!(value, 0x42);
+    }
+
+    #[test]
+    fn test_memory_read_write_u16() {
+        let mut bus = MemoryBus::new();
+        bus.write_u16(0x3000, 0x1234);
+        let value = bus.read_u16(0x3000);
+
+        assert_eq!(value, 0x1234);
+    }
+}
