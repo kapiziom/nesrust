@@ -4,4 +4,4 @@ pub mod flag_operations;
 
 pub mod stack_operations;
 
-pub mod instruction_executions;
+pub mod cpu_instructions;

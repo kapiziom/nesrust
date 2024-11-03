@@ -1,6 +1,6 @@
 use crate::emulator::core::cpu_bus::{CpuBus, read_u16_core, write_u16_core};
 
-struct MockBus {
+pub struct MockBus {
     pub memory: [u8; 0x10000], // 64 KB
     pub nmi: Option<u8>, // non-maskable interrupt
 }
