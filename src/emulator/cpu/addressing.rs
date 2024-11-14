@@ -1,5 +1,5 @@
 // https://www.nesdev.org/obelisk-6502-guide/addressing.html#IMM
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub (super) enum AddressingMode {
     Implicit,
     Accumulator,
