@@ -1,18 +1,16 @@
 mod addressing;
 pub mod memory;
 mod operation_codes;
-mod cpu_flags;
-mod cpu_traits;
+mod flags;
+mod instructions;
 mod interrupts;
+mod stack;
 
 use crate::emulator::core::cpu_bus::CpuBus;
 pub use operation_codes::*;
 pub use addressing::*;
-pub use cpu_traits::*;
-use crate::emulator::cpu::addressing_mode_operations::AddressingModeOperations;
-use crate::emulator::cpu::cpu_flags::CpuFlags;
-use crate::emulator::cpu::flag_operations::FlagOperations;
-use crate::emulator::cpu::cpu_instructions::{CpuInstructions};
+use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
+use crate::emulator::cpu::instructions::{CpuInstructions};
 
 pub struct CPU<'a> {
     pub (super) register_a: u8,
@@ -20,7 +18,7 @@ pub struct CPU<'a> {
     pub (super) register_y: u8,
     pub (super) stack_pointer: u8,
     pub program_counter: u16,
-    pub (super) flags: cpu_flags::CpuFlags,
+    pub (super) flags: flags::CpuFlags,
     pub bus: Box<dyn CpuBus + 'a>,
 }
 
@@ -319,7 +317,7 @@ mod test {
     use log::log;
     use super::*;
     use crate::emulator::core::mock_bus::MockBus;
-    use crate::emulator::cpu::stack_operations::StackOperations;
+    use crate::emulator::cpu::stack::StackOperations;
 
     #[test]
     fn test_adc_immediate() {

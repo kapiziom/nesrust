@@ -1,9 +1,8 @@
+
 use crate::emulator::cpu::addressing::AddressingMode;
-use crate::emulator::cpu::addressing_mode_operations::AddressingModeOperations;
-use crate::emulator::cpu::CPU;
-use crate::emulator::cpu::cpu_flags::CpuFlags;
-use crate::emulator::cpu::flag_operations::FlagOperations;
-use crate::emulator::cpu::stack_operations::StackOperations;
+use crate::emulator::cpu::{AddressingModeOperations, CPU};
+use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
+use crate::emulator::cpu::stack::StackOperations;
 
 pub trait CpuInstructions {
     fn adc(&mut self, mode: &AddressingMode, program: &[u8]);
