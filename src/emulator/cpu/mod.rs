@@ -6,7 +6,7 @@ mod instructions;
 mod interrupts;
 mod stack;
 
-use crate::emulator::core::cpu_bus::CpuBus;
+use crate::emulator::bus::cpu_bus::CpuBus;
 pub use operation_codes::*;
 pub use addressing::*;
 use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
@@ -316,7 +316,7 @@ impl<'a> CPU<'a> {
 mod test {
     use log::log;
     use super::*;
-    use crate::emulator::core::mock_bus::MockBus;
+    use crate::emulator::bus::mock_bus::MockBus;
     use crate::emulator::cpu::stack::StackOperations;
 
     #[test]
