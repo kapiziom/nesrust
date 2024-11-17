@@ -524,10 +524,15 @@ impl<'a> CpuInstructions for CPU<'a> {
 impl<'a> CPU<'a> {
     fn branch_helper(&mut self, condition: bool) {
         if condition {
+            self.tick(1);
+
             let offset = self.get_relative() as i8;
+            let old_pc = self.program_counter;
             let new_pc = self.program_counter.wrapping_add(offset as u16);
 
-            // todo cycles
+            if (old_pc & 0xFF00) != (new_pc & 0xFF00) {
+                self.tick(1);
+            }
 
             self.program_counter = new_pc;
         }

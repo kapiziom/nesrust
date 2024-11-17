@@ -30,4 +30,17 @@ impl Bus {
     pub fn get_rom_data(&self) -> &[u8] {
         &self.rom.prg_rom
     }
+
+    pub fn tick(&mut self, cycles: u16) {
+        self.cycles += cycles as usize;
+
+        // 3x PPU = 1x CPU
+        for _ in 0..(cycles * 3) {
+            self.ppu.tick();
+        }
+
+        if self.ppu.poll_nmi() {
+            self.nmi_interrupt = Some(0xFF);
+        }
+    }
 }

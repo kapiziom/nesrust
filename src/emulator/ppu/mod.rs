@@ -3,7 +3,10 @@ pub struct PPU {
     vram: [u8; 2048],
     oam: [u8; 256],
     palette: [u8; 32],
-    // todo
+    scanline: i16,
+    pub cycles: u16,
+    frame_complete: bool,
+    nmi_flag: bool,
 }
 
 impl PPU {
@@ -12,7 +15,10 @@ impl PPU {
             vram: [0; 2048],
             oam: [0; 256],
             palette: [0; 32],
-            // todo
+            scanline: 0,
+            cycles: 0,
+            frame_complete: false,
+            nmi_flag: false,
         }
     }
 
@@ -31,6 +37,40 @@ impl PPU {
             0x3000..=0x3EFF => self.vram[((address - 0x3000) & 0x0FFF) as usize] = data,
             0x3F00..=0x3FFF => self.palette[((address - 0x3F00) & 0x1F) as usize] = data,
             _ => panic!("Disallowed address write PPU: {:04X}", address),
+        }
+    }
+
+    pub fn tick(&mut self) {
+        self.cycles += 1;
+
+        if self.cycles >= 341 {
+            self.cycles = 0;
+            self.scanline += 1;
+
+            if self.scanline == 241 {
+                self.nmi_flag = true;
+            } else if self.scanline >= 261 {
+                self.scanline = 0;
+                self.frame_complete = true;
+            }
+        }
+    }
+
+    pub fn is_frame_complete(&mut self) -> bool {
+        if self.frame_complete {
+            self.frame_complete = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn poll_nmi(&mut self) -> bool {
+        if self.nmi_flag {
+            self.nmi_flag = false;
+            true
+        } else {
+            false
         }
     }
 }

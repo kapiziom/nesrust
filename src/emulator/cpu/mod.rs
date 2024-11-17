@@ -253,7 +253,8 @@ impl<'a> CPU<'a> {
                 }
             }
 
-            // todo cycles
+            self.tick(op_code_info.cycles);
+
             if !is_jump {
                 self.program_counter = self.program_counter + (op_code_info.bytes - 1) as u16;
             }
@@ -327,6 +328,10 @@ impl<'a> CPU<'a> {
     pub (super) fn set_register_y(&mut self, data: u8) {
         self.register_y = data;
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    pub (super) fn tick(&mut self, cycles: u8) {
+        self.bus.tick(cycles)
     }
 
     fn interrupt(&mut self) {

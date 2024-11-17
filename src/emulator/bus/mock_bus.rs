@@ -34,6 +34,10 @@ impl CpuBus for MockBus {
     fn write(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
     }
+
+    fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize;
+    }
 }
 
 
@@ -84,5 +88,16 @@ mod tests {
         let mut bus = MockBus::new();
         bus.nmi = Some(0x10);
         assert_eq!(bus.nmi, Some(0x10));
+    }
+
+
+    #[test]
+    fn test_bus_cycles() {
+        let mut bus = MockBus::new();
+
+        assert_eq!(bus.cycles, 0);
+
+        bus.tick(2);
+        assert_eq!(bus.cycles, 2);
     }
 }

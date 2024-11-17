@@ -17,6 +17,8 @@ pub trait CpuBus {
         self.write(addr, lo);
         self.write(addr + 1, hi);
     }
+
+    fn tick(&mut self, cycles: u8);
 }
 
 
@@ -91,5 +93,9 @@ impl CpuBus for Bus {
             }
             _ => {}
         }
+    }
+
+    fn tick(&mut self, cycles: u8) {
+        self.tick(cycles as u16)
     }
 }
