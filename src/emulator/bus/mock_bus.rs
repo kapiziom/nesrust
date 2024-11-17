@@ -14,6 +14,16 @@ impl MockBus {
             cycles: 0
         }
     }
+
+    pub fn load_program(&mut self, program: &[u8], start_address: u16) {
+        let end_address = start_address as usize + program.len();
+
+        if end_address > 0x10000 {
+            panic!("Program exceeds memory bounds");
+        }
+
+        self.memory[start_address as usize..end_address].copy_from_slice(program);
+    }
 }
 
 impl CpuBus for MockBus {

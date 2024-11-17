@@ -25,14 +25,11 @@ impl CpuBus for Bus {
         match addr {
             // Internal RAM + mirroring
             0x0000..=0x1FFF => {
-                let mirrored_addr = addr & 0x07FF;
-                self.memory.w_ram[mirrored_addr as usize]
+                self.ram.read(addr & 0x07FF)
             }
             // PPU registers + mirroring
             0x2000..=0x3FFF => {
-                let mirrored_addr = 0x2000 + (addr & 0x7);
-                // TODO: Implement PPU register reading
-                panic!("not implemented")
+                self.ppu.read(0x2000 + (addr & 0x7))
             }
             // APU & I/O registers
             0x4000..=0x4015 => {
@@ -46,18 +43,15 @@ impl CpuBus for Bus {
             }
             // Expansion ROM
             0x4020..=0x5FFF => {
-                // TODO: Expansion ROM reading
-                panic!("not implemented")
+                self.rom.read_expansion(addr)
             }
             // SRAM
             0x6000..=0x7FFF => {
-                // TODO: Battery backed save or work RAM
-                panic!("not implemented")
+                self.rom.read_sram(addr)
             }
             // PRG ROM
             0x8000..=0xFFFF => {
-                let rom_addr = addr - 0x8000;
-                self.memory.prg_rom[rom_addr as usize]
+                self.rom.read_prg(addr)
             }
             _ => 0
         }
@@ -67,14 +61,11 @@ impl CpuBus for Bus {
         match addr {
             // Internal RAM + mirroring
             0x0000..=0x1FFF => {
-                let mirrored_addr = addr & 0x07FF;
-                self.memory.w_ram[mirrored_addr as usize] = data;
+                self.ram.write(addr & 0x07FF, data);
             }
             // PPU registers + mirroring
             0x2000..=0x3FFF => {
-                let mirrored_addr = 0x2000 + (addr & 0x7);
-                // TODO: Implement PPU register writing
-                panic!("not implemented")
+                self.ppu.write(0x2000 + (addr & 0x7), data);
             }
             // APU & I/O registers
             0x4000..=0x4015 => {
@@ -88,19 +79,15 @@ impl CpuBus for Bus {
             }
             // Expansion ROM
             0x4020..=0x5FFF => {
-                // TODO: Expansion ROM writing (if supported by mapper)
-                panic!("not implemented")
+                self.rom.write_expansion(addr, data)
             }
             // SRAM
             0x6000..=0x7FFF => {
-                // TODO: Battery backed save or work RAM
-                panic!("not implemented")
+                self.rom.write_sram(addr, data)
             }
             // PRG ROM (mapper-dependent)
             0x8000..=0xFFFF => {
-                // TODO: Implement mapper-specific ROM writing
-                // panic!("write rom section detected: {}", addr)
-                panic!("not implemented")
+                self.rom.write_prg(addr, data)
             }
             _ => {}
         }

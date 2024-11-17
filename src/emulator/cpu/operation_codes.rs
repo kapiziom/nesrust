@@ -11,8 +11,8 @@ https://www.nesdev.org/obelisk-6502-guide/reference.html
 pub struct OperationCode {
     pub code: u8,
     pub mnemonic: &'static str,
-    pub addressing_mode: AddressingMode,
-    pub bytes: u8,
+    pub (super) addressing_mode: AddressingMode,
+    pub (super) bytes: u8,
     pub cycles: u8,
 }
 

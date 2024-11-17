@@ -57,7 +57,7 @@ impl<'a> FlagOperations for CPU<'a> {
     }
 
     fn get_flag_value(&mut self, flag: CpuFlags) -> u16 {
-        if self.flags.contains(flag) { 1 } else { 0 }
+        if self.contains_flag(flag) { 1 } else { 0 }
     }
 
     fn contains_flag(&mut self, flag: CpuFlags) -> bool {
