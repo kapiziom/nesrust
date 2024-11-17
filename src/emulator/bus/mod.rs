@@ -37,10 +37,11 @@ impl Bus {
         // 3x PPU = 1x CPU
         for _ in 0..(cycles * 3) {
             self.ppu.tick();
-        }
 
-        if self.ppu.poll_nmi() {
-            self.nmi_interrupt = Some(0xFF);
+            if self.ppu.fetch_nmi() {
+                self.nmi_interrupt = Some(0xFF);
+            }
         }
     }
+
 }

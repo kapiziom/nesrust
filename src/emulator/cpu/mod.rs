@@ -10,6 +10,7 @@ pub use operation_codes::*;
 pub use addressing::*;
 use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
 use crate::emulator::cpu::instructions::{CpuInstructions};
+use crate::emulator::cpu::interrupts::{CpuInterrupts, Interrupt};
 
 pub struct CPU<'a> {
     pub (super) register_a: u8,
@@ -67,12 +68,21 @@ impl<'a> CPU<'a> {
     }
 
     fn process_operation(&mut self, operation_code: u8) -> bool {
+        if let Some(_nmi) = self.bus.fetch_nmi() {
+            self.handle_interrupt(interrupts::NMI);
+        }
+
         self.program_counter += 1;
 
         let mut is_jump = false;
 
         if let Some(op_code_info) = CPU_OPERATION_CODES_MAP.get(&operation_code) {
             match operation_code {
+                // BRK - Force Interrupt
+                0x00 => {
+                    self.handle_interrupt(interrupts::BRK);
+                    return false;
+                },
                 // ADC - Add with Carry
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71
                 => self.adc(&op_code_info.addressing_mode),
@@ -242,11 +252,6 @@ impl<'a> CPU<'a> {
                 // TYA - Transfer Y to Accumulator
                 0x98
                 => self.tya(),
-                // BRK - Force Interrupt
-                0x00 => {
-                    println!("BRK: {:#X}", operation_code);
-                    return false;
-                },
                 _ => {
                     println!("Unknown operation_code: {}", operation_code);
                     return false;
@@ -333,10 +338,6 @@ impl<'a> CPU<'a> {
     pub (super) fn tick(&mut self, cycles: u8) {
         self.bus.tick(cycles)
     }
-
-    fn interrupt(&mut self) {
-        // todo
-    }
 }
 
 #[cfg(test)]
@@ -370,6 +371,28 @@ mod test {
 
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.mem_read(0x00), 0x05);
+    }
+
+    #[test]
+    fn test_brk_interrupt() {
+        let program = vec![0x00];
+        let mut cpu = prepare_test_cpu(&program);
+
+        let program_end = get_program_end(cpu.program_counter, program.len());
+
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+
+        cpu.mem_write(0xFFFE, 0x34); // lo
+        cpu.mem_write(0xFFFF, 0x12); // hi
+
+        cpu.interpret(program_end);
+
+        assert_eq!(cpu.program_counter, 0x1234);
+
+        assert!(cpu.contains_flag(CpuFlags::BREAK));
+        assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
+
+        assert_eq!(cpu.stack_pointer, 0xFA);
     }
 
     #[test]

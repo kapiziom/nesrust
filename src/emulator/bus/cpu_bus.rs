@@ -19,6 +19,8 @@ pub trait CpuBus {
     }
 
     fn tick(&mut self, cycles: u8);
+
+    fn fetch_nmi(&mut self) -> Option<u8>;
 }
 
 
@@ -97,5 +99,9 @@ impl CpuBus for Bus {
 
     fn tick(&mut self, cycles: u8) {
         self.tick(cycles as u16)
+    }
+
+    fn fetch_nmi(&mut self) -> Option<u8> {
+        self.nmi_interrupt.take()
     }
 }

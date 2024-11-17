@@ -16,6 +16,7 @@ NV1B DIZC
 use crate::emulator::cpu::CPU;
 
 bitflags::bitflags! {
+    #[derive(Clone, Copy)]
     pub struct CpuFlags: u8 {
         const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;
@@ -30,6 +31,8 @@ bitflags::bitflags! {
 
 
 pub trait FlagOperations {
+    fn get_status_register(&self) -> u8;
+
     fn set_flag(&mut self, flag: CpuFlags, value: bool);
 
     fn clear_flag(&mut self, flag: CpuFlags);
@@ -44,6 +47,10 @@ pub trait FlagOperations {
 }
 
 impl<'a> FlagOperations for CPU<'a> {
+    fn get_status_register(&self) -> u8 {
+        self.flags.bits()
+    }
+
     fn set_flag(&mut self, flag: CpuFlags, value: bool) {
         self.flags.set(flag, value);
     }

@@ -65,7 +65,7 @@ impl PPU {
         }
     }
 
-    pub fn poll_nmi(&mut self) -> bool {
+    pub fn fetch_nmi(&mut self) -> bool {
         if self.nmi_flag {
             self.nmi_flag = false;
             true

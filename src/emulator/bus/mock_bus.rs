@@ -2,7 +2,7 @@ use crate::emulator::bus::cpu_bus::CpuBus;
 
 pub struct MockBus {
     pub memory: [u8; 0x10000],
-    pub nmi: Option<u8>,
+    pub nmi_interrupt: Option<u8>,
     pub cycles: usize,
 }
 
@@ -10,7 +10,7 @@ impl MockBus {
     pub fn new() -> Self {
         Self {
             memory: [0; 0x10000],
-            nmi: None,
+            nmi_interrupt: None,
             cycles: 0
         }
     }
@@ -37,6 +37,10 @@ impl CpuBus for MockBus {
 
     fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
+    }
+
+    fn fetch_nmi(&mut self) -> Option<u8> {
+        self.nmi_interrupt.take()
     }
 }
 
@@ -86,8 +90,8 @@ mod tests {
     #[test]
     fn test_non_maskable_interrupt() {
         let mut bus = MockBus::new();
-        bus.nmi = Some(0x10);
-        assert_eq!(bus.nmi, Some(0x10));
+        bus.nmi_interrupt = Some(0x10);
+        assert_eq!(bus.nmi_interrupt, Some(0x10));
     }
 
 
