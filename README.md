@@ -1,6 +1,6 @@
 # nesrust: NES Emulator in Rust 🎮
 
-**NESRust** is a simple Nintendo Entertainment System (NES) emulator written in Rust, focusing on modularity and code clarity.
+**NESRust** is a work-in-progress Nintendo Entertainment System (NES) emulator written in Rust, with a focus on **modularity, code clarity, and learning low-level system design**.
 
 ## 🚀 Features Implemented
 
@@ -20,17 +20,10 @@
 
 ## 🛠️ To-Do Features
 
-### PPU (Picture Processing Unit)
-- Implement graphics rendering
-
-### APU (Audio Processing Unit)
-- Implement sound support
-
-### Advanced Mapper Support
-- Extend support for additional mappers
-
-### Controller Support
-- Implement controller support
+- [ ] **PPU (graphics)** — render NES graphics
+- [ ] **APU (sound)** — audio emulation
+- [ ] **Additional mappers** — extended ROM compatibility
+- [ ] **Controller input** — simulate gamepad controls
 
 ## 📂 Project Structure
 
