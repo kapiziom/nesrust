@@ -61,24 +61,28 @@ pub trait CpuInstructions {
     fn txa(&mut self);
     fn txs(&mut self);
     fn tya(&mut self);
+
+    // unofficial opcodes
+    fn nop_with_operand(&mut self, mode: &AddressingMode);
+    fn lax(&mut self, mode: &AddressingMode);
+    fn sax(&mut self, mode: &AddressingMode);
+    fn dcp(&mut self, mode: &AddressingMode);
+    fn isb(&mut self, mode: &AddressingMode);
+    fn slo(&mut self, mode: &AddressingMode);
+    fn rla(&mut self, mode: &AddressingMode);
+    fn sre(&mut self, mode: &AddressingMode);
+    fn rra(&mut self, mode: &AddressingMode);
+    fn anc(&mut self, mode: &AddressingMode);
+    fn alr(&mut self, mode: &AddressingMode);
+    fn arr(&mut self, mode: &AddressingMode);
+    fn axs(&mut self, mode: &AddressingMode);
 }
 
 impl<'a> CpuInstructions for CPU<'a> {
     fn adc(&mut self, mode: &AddressingMode) {
         let operand = self.get_operand(mode);
 
-        let carry = self.get_flag_value(CpuFlags::CARRY);
-
-        let sum = (self.register_a as u16) + (operand as u16) + carry;
-
-        let overflow = (!(self.register_a ^ operand) & (self.register_a ^ sum as u8) & 0x80) != 0;
-
-        self.set_flag(CpuFlags::CARRY, sum > 0xFF);
-        self.set_flag(CpuFlags::OVERFLOW, overflow);
-
-        self.register_a = sum as u8;
-
-        self.update_zero_and_negative_flags(self.register_a);
+        self.add_to_accumulator(operand);
     }
 
     fn and(&mut self, mode: &AddressingMode) {
@@ -206,29 +210,20 @@ impl<'a> CpuInstructions for CPU<'a> {
 
     fn cmp(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
-        let result = self.register_a.wrapping_sub(value);
 
-        self.set_flag(CpuFlags::CARRY, self.register_a >= value);
-        self.set_flag(CpuFlags::ZERO, self.register_a == value);
-        self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
+        self.compare(self.register_a, value);
     }
 
     fn cpx(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
-        let result = self.register_x.wrapping_sub(value);
 
-        self.set_flag(CpuFlags::CARRY, self.register_x >= value);
-        self.set_flag(CpuFlags::ZERO, self.register_x == value);
-        self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
+        self.compare(self.register_x, value);
     }
 
     fn cpy(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
-        let result = self.register_y.wrapping_sub(value);
 
-        self.set_flag(CpuFlags::CARRY, self.register_y >= value);
-        self.set_flag(CpuFlags::ZERO, self.register_y == value);
-        self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
+        self.compare(self.register_y, value);
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -450,17 +445,8 @@ impl<'a> CpuInstructions for CPU<'a> {
 
     fn sbc(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
-        let carry = if self.contains_flag(CpuFlags::CARRY) { 0 } else { 1 };
 
-        let result = self.register_a as i16 - value as i16 - carry as i16;
-
-        self.set_flag(CpuFlags::CARRY, result >= 0);
-
-        let result = result as u8;
-        self.set_flag(CpuFlags::OVERFLOW, (self.register_a ^ value) & (self.register_a ^ result) & 0x80 != 0);
-
-        self.register_a = result;
-        self.update_zero_and_negative_flags(self.register_a);
+        self.sub_from_accumulator(value);
     }
 
     fn sec(&mut self) {
@@ -518,10 +504,157 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.register_a = self.register_y;
         self.update_zero_and_negative_flags(self.register_a);
     }
+
+    fn nop_with_operand(&mut self, mode: &AddressingMode) {
+        // the operand is read and discarded (the read can have side effects on real hardware)
+        self.get_operand(mode);
+    }
+
+    fn lax(&mut self, mode: &AddressingMode) {
+        let value = self.get_operand(mode);
+
+        self.register_a = value;
+        self.register_x = value;
+        self.update_zero_and_negative_flags(value);
+    }
+
+    fn sax(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        self.mem_write(addr, self.register_a & self.register_x);
+    }
+
+    fn dcp(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr).wrapping_sub(1);
+
+        self.mem_write(addr, value);
+        self.compare(self.register_a, value);
+    }
+
+    fn isb(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr).wrapping_add(1);
+
+        self.mem_write(addr, value);
+        self.sub_from_accumulator(value);
+    }
+
+    fn slo(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr);
+        let result = value << 1;
+
+        self.mem_write(addr, result);
+        self.set_flag(CpuFlags::CARRY, value & 0x80 != 0);
+        self.set_register_a(self.register_a | result);
+    }
+
+    fn rla(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr);
+        let result = (value << 1) | self.get_flag_value(CpuFlags::CARRY) as u8;
+
+        self.mem_write(addr, result);
+        self.set_flag(CpuFlags::CARRY, value & 0x80 != 0);
+        self.set_register_a(self.register_a & result);
+    }
+
+    fn sre(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr);
+        let result = value >> 1;
+
+        self.mem_write(addr, result);
+        self.set_flag(CpuFlags::CARRY, value & 0x01 != 0);
+        self.set_register_a(self.register_a ^ result);
+    }
+
+    fn rra(&mut self, mode: &AddressingMode) {
+        let addr = self.get_address(mode);
+        let value = self.mem_read(addr);
+        let result = (value >> 1) | ((self.get_flag_value(CpuFlags::CARRY) as u8) << 7);
+
+        self.mem_write(addr, result);
+        // ROR's carry-out becomes the carry-in of the ADC
+        self.set_flag(CpuFlags::CARRY, value & 0x01 != 0);
+        self.add_to_accumulator(result);
+    }
+
+    fn anc(&mut self, mode: &AddressingMode) {
+        let value = self.get_operand(mode);
+
+        self.set_register_a(self.register_a & value);
+        self.set_flag(CpuFlags::CARRY, self.register_a & 0x80 != 0);
+    }
+
+    fn alr(&mut self, mode: &AddressingMode) {
+        let value = self.get_operand(mode);
+        let anded = self.register_a & value;
+
+        self.set_flag(CpuFlags::CARRY, anded & 0x01 != 0);
+        self.set_register_a(anded >> 1);
+    }
+
+    fn arr(&mut self, mode: &AddressingMode) {
+        let value = self.get_operand(mode);
+        let carry_in = (self.get_flag_value(CpuFlags::CARRY) as u8) << 7;
+        let result = ((self.register_a & value) >> 1) | carry_in;
+
+        self.set_register_a(result);
+        // C = bit 6, V = bit 6 xor bit 5 of the result
+        self.set_flag(CpuFlags::CARRY, result & 0x40 != 0);
+        self.set_flag(CpuFlags::OVERFLOW, ((result >> 6) ^ (result >> 5)) & 0x01 != 0);
+    }
+
+    fn axs(&mut self, mode: &AddressingMode) {
+        let value = self.get_operand(mode);
+        let anded = self.register_a & self.register_x;
+
+        // flags as in CMP (no borrow-in); X receives the difference
+        self.compare(anded, value);
+        self.set_register_x(anded.wrapping_sub(value));
+    }
 }
 
 // helper
 impl<'a> CPU<'a> {
+    fn add_to_accumulator(&mut self, operand: u8) {
+        let carry = self.get_flag_value(CpuFlags::CARRY);
+
+        let sum = (self.register_a as u16) + (operand as u16) + carry;
+
+        let overflow = (!(self.register_a ^ operand) & (self.register_a ^ sum as u8) & 0x80) != 0;
+
+        self.set_flag(CpuFlags::CARRY, sum > 0xFF);
+        self.set_flag(CpuFlags::OVERFLOW, overflow);
+
+        self.register_a = sum as u8;
+
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn sub_from_accumulator(&mut self, value: u8) {
+        let carry = if self.contains_flag(CpuFlags::CARRY) { 0 } else { 1 };
+
+        let result = self.register_a as i16 - value as i16 - carry as i16;
+
+        self.set_flag(CpuFlags::CARRY, result >= 0);
+
+        let result = result as u8;
+        self.set_flag(CpuFlags::OVERFLOW, (self.register_a ^ value) & (self.register_a ^ result) & 0x80 != 0);
+
+        self.register_a = result;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn compare(&mut self, register: u8, value: u8) {
+        let result = register.wrapping_sub(value);
+
+        self.set_flag(CpuFlags::CARRY, register >= value);
+        self.set_flag(CpuFlags::ZERO, register == value);
+        self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
+    }
+
     fn branch_helper(&mut self, condition: bool) {
         if condition {
             self.tick(1);

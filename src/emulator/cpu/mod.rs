@@ -184,8 +184,51 @@ impl<'a> CPU<'a> {
                 0x4A | 0x46 | 0x56 | 0x4E | 0x5E
                 => self.lsr(&op_code_info.addressing_mode),
                 // NOP - No Operation
-                0xEA
+                0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA
                 => self.nop(),
+                // unofficial NOP (DOP/TOP) - reads and discards an operand
+                0x80 | 0x82 | 0x89 | 0xC2 | 0xE2
+                | 0x04 | 0x44 | 0x64
+                | 0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4
+                | 0x0C
+                | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC
+                => self.nop_with_operand(&op_code_info.addressing_mode),
+                // LAX - LDA + LDX (unofficial)
+                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3
+                => self.lax(&op_code_info.addressing_mode),
+                // SAX - Store A & X (unofficial)
+                0x87 | 0x97 | 0x8F | 0x83
+                => self.sax(&op_code_info.addressing_mode),
+                // DCP - DEC + CMP (unofficial)
+                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3
+                => self.dcp(&op_code_info.addressing_mode),
+                // ISB - INC + SBC (unofficial)
+                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3
+                => self.isb(&op_code_info.addressing_mode),
+                // SLO - ASL + ORA (unofficial)
+                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13
+                => self.slo(&op_code_info.addressing_mode),
+                // RLA - ROL + AND (unofficial)
+                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33
+                => self.rla(&op_code_info.addressing_mode),
+                // SRE - LSR + EOR (unofficial)
+                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53
+                => self.sre(&op_code_info.addressing_mode),
+                // RRA - ROR + ADC (unofficial)
+                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73
+                => self.rra(&op_code_info.addressing_mode),
+                // ANC - AND #imm, C = N (unofficial)
+                0x0B | 0x2B
+                => self.anc(&op_code_info.addressing_mode),
+                // ALR - AND #imm, LSR A (unofficial)
+                0x4B
+                => self.alr(&op_code_info.addressing_mode),
+                // ARR - AND #imm, ROR A (unofficial)
+                0x6B
+                => self.arr(&op_code_info.addressing_mode),
+                // AXS - X = (A & X) - #imm (unofficial)
+                0xCB
+                => self.axs(&op_code_info.addressing_mode),
                 // ORA - Logical Inclusive OR
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11
                 => self.ora(&op_code_info.addressing_mode),
@@ -214,7 +257,7 @@ impl<'a> CPU<'a> {
                 0x60
                 => self.rts(),
                 // SBC - Subtract with Carry
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1
+                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 | 0xEB
                 => self.sbc(&op_code_info.addressing_mode),
                 // SEC - Set Carry Flag
                 0x38
@@ -617,5 +660,179 @@ mod test {
         // Check the values on the stack
         assert_eq!(cpu.pop_stack(), 0x02, "Low byte of return address should be on the stack");
         assert_eq!(cpu.pop_stack(), 0x80, "High byte of return address should be on the stack");
+    }
+
+    fn run_single(program: &[u8], setup: impl FnOnce(&mut CPU)) -> CPU {
+        let mut cpu = prepare_test_cpu(program);
+        setup(&mut cpu);
+        cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), true);
+        cpu
+    }
+
+    #[test]
+    fn test_every_table_opcode_is_dispatched() {
+        let mut seen = std::collections::HashSet::new();
+
+        for op in CPU_OPERATION_CODES_VEC.iter() {
+            assert!(seen.insert(op.code), "duplicate opcode {:#04X}", op.code);
+
+            if op.code == 0x00 {
+                continue; // BRK ends the interpreter loop by design
+            }
+
+            let program = [op.code, 0x10, 0x20];
+            let mut cpu = prepare_test_cpu(&program);
+            assert!(cpu.process_operation(op.code), "opcode {:#04X} ({}) is in the table but not dispatched", op.code, op.mnemonic);
+        }
+
+        assert_eq!(CPU_OPERATION_CODES_VEC.iter().filter(|op| op.official).count(), 151);
+    }
+
+    #[test]
+    fn test_unofficial_nop_skips_operand() {
+        // 0x1A implied, 0x04 zero page, 0x0C absolute, 0x1C absolute,X, 0x80 immediate
+        for (program, len) in [(vec![0x1A], 1u16), (vec![0x04, 0x10], 2), (vec![0x0C, 0x00, 0x20], 3), (vec![0x1C, 0x00, 0x20], 3), (vec![0x80, 0x44], 2)] {
+            let cpu = run_single(&program, |cpu| cpu.register_a = 0x42);
+            assert_eq!(cpu.program_counter, 0x8000 + len, "program {:02X?}", program);
+            assert_eq!(cpu.register_a, 0x42);
+        }
+    }
+
+    #[test]
+    fn test_sbc_unofficial_eb() {
+        let cpu = run_single(&[0xEB, 0x05], |cpu| { cpu.register_a = 0x10; cpu.insert_flag(CpuFlags::CARRY); });
+
+        assert_eq!(cpu.register_a, 0x0B);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_lax_zero_page() {
+        let cpu = run_single(&[0xA7, 0x10], |cpu| cpu.mem_write(0x10, 0x80));
+
+        assert_eq!(cpu.register_a, 0x80);
+        assert_eq!(cpu.register_x, 0x80);
+        assert!(cpu.flags.contains(CpuFlags::NEGATIVE));
+        assert!(!cpu.flags.contains(CpuFlags::ZERO));
+    }
+
+    #[test]
+    fn test_lax_indirect_y() {
+        let cpu = run_single(&[0xB3, 0x20], |cpu| {
+            cpu.mem_write(0x20, 0x00);
+            cpu.mem_write(0x21, 0x30);
+            cpu.register_y = 0x05;
+            cpu.mem_write(0x3005, 0x7F);
+        });
+
+        assert_eq!(cpu.register_a, 0x7F);
+        assert_eq!(cpu.register_x, 0x7F);
+    }
+
+    #[test]
+    fn test_sax_zero_page() {
+        let mut cpu = run_single(&[0x87, 0x10], |cpu| { cpu.register_a = 0xF0; cpu.register_x = 0x3C; });
+
+        assert_eq!(cpu.mem_read(0x10), 0x30);
+        assert!(!cpu.flags.contains(CpuFlags::ZERO), "SAX does not touch flags");
+    }
+
+    #[test]
+    fn test_dcp_zero_page() {
+        let mut cpu = run_single(&[0xC7, 0x10], |cpu| { cpu.mem_write(0x10, 0x10); cpu.register_a = 0x0F; });
+
+        assert_eq!(cpu.mem_read(0x10), 0x0F);
+        assert_eq!(cpu.register_a, 0x0F);
+        assert!(cpu.flags.contains(CpuFlags::ZERO));
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_isb_zero_page() {
+        let mut cpu = run_single(&[0xE7, 0x10], |cpu| {
+            cpu.mem_write(0x10, 0x0F);
+            cpu.register_a = 0x20;
+            cpu.insert_flag(CpuFlags::CARRY);
+        });
+
+        assert_eq!(cpu.mem_read(0x10), 0x10);
+        assert_eq!(cpu.register_a, 0x10); // 0x20 - 0x10
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_slo_zero_page() {
+        let mut cpu = run_single(&[0x07, 0x10], |cpu| { cpu.mem_write(0x10, 0x81); cpu.register_a = 0x01; });
+
+        assert_eq!(cpu.mem_read(0x10), 0x02);
+        assert_eq!(cpu.register_a, 0x03);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_rla_zero_page() {
+        let mut cpu = run_single(&[0x27, 0x10], |cpu| {
+            cpu.mem_write(0x10, 0x81);
+            cpu.register_a = 0xFF;
+            cpu.insert_flag(CpuFlags::CARRY);
+        });
+
+        assert_eq!(cpu.mem_read(0x10), 0x03);
+        assert_eq!(cpu.register_a, 0x03);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_sre_zero_page() {
+        let mut cpu = run_single(&[0x47, 0x10], |cpu| { cpu.mem_write(0x10, 0x03); cpu.register_a = 0xFF; });
+
+        assert_eq!(cpu.mem_read(0x10), 0x01);
+        assert_eq!(cpu.register_a, 0xFE);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+        assert!(cpu.flags.contains(CpuFlags::NEGATIVE));
+    }
+
+    #[test]
+    fn test_rra_zero_page() {
+        let mut cpu = run_single(&[0x67, 0x10], |cpu| { cpu.mem_write(0x10, 0x03); cpu.register_a = 0x10; });
+
+        assert_eq!(cpu.mem_read(0x10), 0x01); // ROR: 0x03 >> 1, carry out = 1
+        assert_eq!(cpu.register_a, 0x12);     // ADC: 0x10 + 0x01 + carry(1)
+        assert!(!cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_anc_immediate() {
+        let cpu = run_single(&[0x0B, 0x80], |cpu| cpu.register_a = 0xFF);
+
+        assert_eq!(cpu.register_a, 0x80);
+        assert!(cpu.flags.contains(CpuFlags::NEGATIVE));
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_alr_immediate() {
+        let cpu = run_single(&[0x4B, 0x0F], |cpu| cpu.register_a = 0xFF);
+
+        assert_eq!(cpu.register_a, 0x07);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+    }
+
+    #[test]
+    fn test_arr_immediate() {
+        let cpu = run_single(&[0x6B, 0xFF], |cpu| { cpu.register_a = 0xFF; cpu.insert_flag(CpuFlags::CARRY); });
+
+        assert_eq!(cpu.register_a, 0xFF);
+        assert!(cpu.flags.contains(CpuFlags::CARRY));   // bit 6
+        assert!(!cpu.flags.contains(CpuFlags::OVERFLOW)); // bit 6 xor bit 5
+    }
+
+    #[test]
+    fn test_axs_immediate() {
+        let cpu = run_single(&[0xCB, 0x05], |cpu| { cpu.register_a = 0xFF; cpu.register_x = 0x0F; });
+
+        assert_eq!(cpu.register_x, 0x0A); // (0xFF & 0x0F) - 5
+        assert!(cpu.flags.contains(CpuFlags::CARRY));
+        assert_eq!(cpu.register_a, 0xFF);
     }
 }

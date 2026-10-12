@@ -14,11 +14,15 @@ pub struct OperationCode {
     pub (super) addressing_mode: AddressingMode,
     pub (super) bytes: u8,
     pub cycles: u8,
+    pub official: bool,
 }
 
 impl OperationCode {
     fn new(code: u8, mnemonic: &'static str, addressing_mode: AddressingMode, bytes: u8, cycles: u8)
-        -> Self { OperationCode { code, mnemonic, addressing_mode, bytes, cycles } }
+        -> Self { OperationCode { code, mnemonic, addressing_mode, bytes, cycles, official: true } }
+
+    fn unofficial(code: u8, mnemonic: &'static str, addressing_mode: AddressingMode, bytes: u8, cycles: u8)
+        -> Self { OperationCode { code, mnemonic, addressing_mode, bytes, cycles, official: false } }
 }
 
 lazy_static! {
@@ -284,7 +288,121 @@ lazy_static! {
         OperationCode::new(0x9A, "TXS", AddressingMode::Implicit, 1, 2),
 
         // TYA - Transfer Y to Accumulator
-        OperationCode::new(0x98, "TYA", AddressingMode::Implicit, 1, 2)
+        OperationCode::new(0x98, "TYA", AddressingMode::Implicit, 1, 2),
+
+        // Unofficial opcodes (https://www.nesdev.org/wiki/CPU_unofficial_opcodes)
+        // Unstable ones (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM are not implemented.
+
+        // NOP - implied
+        OperationCode::unofficial(0x1A, "NOP", AddressingMode::Implicit, 1, 2),
+        OperationCode::unofficial(0x3A, "NOP", AddressingMode::Implicit, 1, 2),
+        OperationCode::unofficial(0x5A, "NOP", AddressingMode::Implicit, 1, 2),
+        OperationCode::unofficial(0x7A, "NOP", AddressingMode::Implicit, 1, 2),
+        OperationCode::unofficial(0xDA, "NOP", AddressingMode::Implicit, 1, 2),
+        OperationCode::unofficial(0xFA, "NOP", AddressingMode::Implicit, 1, 2),
+        // DOP/TOP - NOP that reads (and discards) an operand
+        OperationCode::unofficial(0x80, "NOP", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0x82, "NOP", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0x89, "NOP", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0xC2, "NOP", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0xE2, "NOP", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0x04, "NOP", AddressingMode::ZeroPage, 2, 3),
+        OperationCode::unofficial(0x44, "NOP", AddressingMode::ZeroPage, 2, 3),
+        OperationCode::unofficial(0x64, "NOP", AddressingMode::ZeroPage, 2, 3),
+        OperationCode::unofficial(0x14, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0x34, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0x54, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0x74, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0xD4, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0xF4, "NOP", AddressingMode::ZeroPageX, 2, 4),
+        OperationCode::unofficial(0x0C, "NOP", AddressingMode::Absolute, 3, 4),
+        OperationCode::unofficial(0x1C, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0x3C, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0x5C, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0x7C, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0xDC, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0xFC, "NOP", AddressingMode::AbsoluteX, 3, 4 /* (+1 if page crossed) */),
+
+        // SBC - duplicate of $E9
+        OperationCode::unofficial(0xEB, "SBC", AddressingMode::Immediate, 2, 2),
+
+        // LAX - LDA + LDX
+        OperationCode::unofficial(0xA7, "LAX", AddressingMode::ZeroPage, 2, 3),
+        OperationCode::unofficial(0xB7, "LAX", AddressingMode::ZeroPageY, 2, 4),
+        OperationCode::unofficial(0xAF, "LAX", AddressingMode::Absolute, 3, 4),
+        OperationCode::unofficial(0xBF, "LAX", AddressingMode::AbsoluteY, 3, 4 /* (+1 if page crossed) */),
+        OperationCode::unofficial(0xA3, "LAX", AddressingMode::IndirectX, 2, 6),
+        OperationCode::unofficial(0xB3, "LAX", AddressingMode::IndirectY, 2, 5 /* (+1 if page crossed) */),
+
+        // SAX - store A & X
+        OperationCode::unofficial(0x87, "SAX", AddressingMode::ZeroPage, 2, 3),
+        OperationCode::unofficial(0x97, "SAX", AddressingMode::ZeroPageY, 2, 4),
+        OperationCode::unofficial(0x8F, "SAX", AddressingMode::Absolute, 3, 4),
+        OperationCode::unofficial(0x83, "SAX", AddressingMode::IndirectX, 2, 6),
+
+        // DCP - DEC + CMP
+        OperationCode::unofficial(0xC7, "DCP", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0xD7, "DCP", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0xCF, "DCP", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0xDF, "DCP", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0xDB, "DCP", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0xC3, "DCP", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0xD3, "DCP", AddressingMode::IndirectY, 2, 8),
+
+        // ISB (ISC) - INC + SBC
+        OperationCode::unofficial(0xE7, "ISB", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0xF7, "ISB", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0xEF, "ISB", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0xFF, "ISB", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0xFB, "ISB", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0xE3, "ISB", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0xF3, "ISB", AddressingMode::IndirectY, 2, 8),
+
+        // SLO - ASL + ORA
+        OperationCode::unofficial(0x07, "SLO", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0x17, "SLO", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0x0F, "SLO", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0x1F, "SLO", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0x1B, "SLO", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0x03, "SLO", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0x13, "SLO", AddressingMode::IndirectY, 2, 8),
+
+        // RLA - ROL + AND
+        OperationCode::unofficial(0x27, "RLA", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0x37, "RLA", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0x2F, "RLA", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0x3F, "RLA", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0x3B, "RLA", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0x23, "RLA", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0x33, "RLA", AddressingMode::IndirectY, 2, 8),
+
+        // SRE - LSR + EOR
+        OperationCode::unofficial(0x47, "SRE", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0x57, "SRE", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0x4F, "SRE", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0x5F, "SRE", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0x5B, "SRE", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0x43, "SRE", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0x53, "SRE", AddressingMode::IndirectY, 2, 8),
+
+        // RRA - ROR + ADC
+        OperationCode::unofficial(0x67, "RRA", AddressingMode::ZeroPage, 2, 5),
+        OperationCode::unofficial(0x77, "RRA", AddressingMode::ZeroPageX, 2, 6),
+        OperationCode::unofficial(0x6F, "RRA", AddressingMode::Absolute, 3, 6),
+        OperationCode::unofficial(0x7F, "RRA", AddressingMode::AbsoluteX, 3, 7),
+        OperationCode::unofficial(0x7B, "RRA", AddressingMode::AbsoluteY, 3, 7),
+        OperationCode::unofficial(0x63, "RRA", AddressingMode::IndirectX, 2, 8),
+        OperationCode::unofficial(0x73, "RRA", AddressingMode::IndirectY, 2, 8),
+
+        // ANC - AND #imm, C = N
+        OperationCode::unofficial(0x0B, "ANC", AddressingMode::Immediate, 2, 2),
+        OperationCode::unofficial(0x2B, "ANC", AddressingMode::Immediate, 2, 2),
+        // ALR (ASR) - AND #imm, LSR A
+        OperationCode::unofficial(0x4B, "ALR", AddressingMode::Immediate, 2, 2),
+        // ARR - AND #imm, ROR A (special C/V)
+        OperationCode::unofficial(0x6B, "ARR", AddressingMode::Immediate, 2, 2),
+        // AXS (SBX) - X = (A & X) - #imm
+        OperationCode::unofficial(0xCB, "AXS", AddressingMode::Immediate, 2, 2)
     ];
 
     pub static ref CPU_OPERATION_CODES_MAP: HashMap<u8, &'static OperationCode> = {
