@@ -1,10 +1,15 @@
-use std::fs;
+use std::{env, fs, process};
 use nesrs::emulator::bus::Bus;
 use nesrs::emulator::cpu::CPU;
 use nesrs::emulator::rom::ROM;
 
 fn main() {
-    let rom_data = fs::read("./test_rom/test_program.nes").expect("Could not read ROM file");
+    let Some(path) = env::args().nth(1) else {
+        eprintln!("usage: nesrs <rom.nes>");
+        process::exit(1);
+    };
+
+    let rom_data = fs::read(&path).expect("Could not read ROM file");
     let rom = ROM::from_nes_file(&rom_data).expect("Failed to parse NES ROM");
 
     let bus = Bus::new(rom);

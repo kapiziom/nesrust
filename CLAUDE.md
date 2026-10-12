@@ -23,7 +23,7 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 | `rom/` | iNES parser (no NES 2.0, no bounds checks), mapper logic hard-coded as `match` (only NROM). PPU cannot access CHR yet. |
 | `ppu/` | Stub: timing counters + NMI flag only. Registers are **not** implemented. |
 | `apu/` | Empty. |
-| `main.rs` | Throw-away demo that runs `test_rom/test_program.nes` with `println!` tracing. |
+| `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` with `println!` tracing. Most real ROMs panic on unimplemented APU/controller registers. |
 
 Target architecture (not yet created) is a Cargo workspace — see PLAN.md §3. When refactoring toward it, move code, don't rewrite working code.
 
