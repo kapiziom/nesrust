@@ -1,11 +1,12 @@
 use crate::emulator::bus::Bus;
 
 pub trait CpuBus {
-    fn read(&self, addr: u16) -> u8;
+    /// Reads can have side effects on real hardware (PPU status, controller shift registers), hence `&mut self`.
+    fn read(&mut self, addr: u16) -> u8;
 
-    fn read_u16(&self, addr: u16) -> u16 {
+    fn read_u16(&mut self, addr: u16) -> u16 {
         let lo = self.read(addr) as u16;
-        let hi = self.read(addr + 1) as u16;
+        let hi = self.read(addr.wrapping_add(1)) as u16;
         (hi << 8) | lo
     }
 
@@ -15,7 +16,7 @@ pub trait CpuBus {
         let lo = (data & 0xFF) as u8;
         let hi = (data >> 8) as u8;
         self.write(addr, lo);
-        self.write(addr + 1, hi);
+        self.write(addr.wrapping_add(1), hi);
     }
 
     fn tick(&mut self, cycles: u8);
@@ -30,8 +31,8 @@ pub trait CpuBus {
 
 
 impl CpuBus for Bus {
-    fn read(&self, addr: u16) -> u8 {
-        match addr {
+    fn read(&mut self, addr: u16) -> u8 {
+        let value = match addr {
             // Internal RAM + mirroring
             0x0000..=0x1FFF => {
                 self.ram.read(addr & 0x07FF)
@@ -43,12 +44,12 @@ impl CpuBus for Bus {
             // APU & I/O registers
             0x4000..=0x4015 => {
                 // TODO: Implement APU register reading
-                panic!("not implemented")
+                self.last_bus_value
             }
-            // Controller registers
+            // Controller registers: only the low bits are driven, the rest is open bus
             0x4016..=0x4017 => {
                 // TODO: Implement controller reading
-                panic!("not implemented")
+                self.last_bus_value & 0xE0
             }
             // Expansion ROM
             0x4020..=0x5FFF => {
@@ -62,11 +63,17 @@ impl CpuBus for Bus {
             0x8000..=0xFFFF => {
                 self.rom.read_prg(addr)
             }
-            _ => 0
-        }
+            // $4018-$401F: disabled test registers
+            _ => self.last_bus_value
+        };
+
+        self.last_bus_value = value;
+        value
     }
 
     fn write(&mut self, addr: u16, data: u8) {
+        self.last_bus_value = data;
+
         match addr {
             // Internal RAM + mirroring
             0x0000..=0x1FFF => {
@@ -79,12 +86,10 @@ impl CpuBus for Bus {
             // APU & I/O registers
             0x4000..=0x4015 => {
                 // TODO: Implement APU register writing
-                panic!("not implemented")
             }
             // Controller registers
             0x4016..=0x4017 => {
                 // TODO: Implement controller writing
-                panic!("not implemented")
             }
             // Expansion ROM
             0x4020..=0x5FFF => {

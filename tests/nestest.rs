@@ -59,7 +59,7 @@ fn nestest_matches_reference_log() {
     bus.load_program(&rom.prg_rom, 0x8000);
     bus.load_program(&rom.prg_rom, 0xC000);
 
-    let mut cpu = CPU::new(Box::new(bus));
+    let mut cpu = CPU::new(bus);
     cpu.set_state(START);
     cpu.cycles = START_CYCLES;
 
@@ -83,6 +83,6 @@ fn nestest_matches_reference_log() {
     }
 
     // nestest stores its result codes at $0002/$0003; 0 means every test passed
-    assert_eq!(cpu.bus.read(0x0002), 0x00, "nestest official-opcode result code");
-    assert_eq!(cpu.bus.read(0x0003), 0x00, "nestest unofficial-opcode result code");
+    assert_eq!(cpu.peek(0x0002), 0x00, "nestest official-opcode result code");
+    assert_eq!(cpu.peek(0x0003), 0x00, "nestest unofficial-opcode result code");
 }

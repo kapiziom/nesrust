@@ -11,6 +11,8 @@ pub struct Bus {
     pub rom: ROM,
     pub nmi_interrupt: Option<u8>,
     cycles: usize,
+    /// Last value that travelled over the data bus; returned by reads of unmapped addresses (open bus).
+    last_bus_value: u8,
     // todo
     // apu: APU,
 }
@@ -22,7 +24,8 @@ impl Bus {
             ppu: PPU::new(),
             rom,
             nmi_interrupt: None,
-            cycles: 0
+            cycles: 0,
+            last_bus_value: 0,
         }
     }
 

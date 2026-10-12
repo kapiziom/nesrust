@@ -13,7 +13,7 @@ fn main() {
     let rom = ROM::from_nes_file(&rom_data).expect("Failed to parse NES ROM");
 
     let bus = Bus::new(rom);
-    let mut cpu = CPU::new(Box::new(bus));
+    let mut cpu = CPU::new(bus);
 
     cpu.program_counter = 0x8000;
 

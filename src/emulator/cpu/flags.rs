@@ -13,6 +13,7 @@ NV1B DIZC
 |+-------- Overflow
 +--------- Negative
 */
+use crate::emulator::bus::cpu_bus::CpuBus;
 use crate::emulator::cpu::CPU;
 
 bitflags::bitflags! {
@@ -30,7 +31,7 @@ bitflags::bitflags! {
 }
 
 
-impl<'a> CPU<'a> {
+impl<B: CpuBus> CPU<B> {
     pub (super) fn set_flag(&mut self, flag: CpuFlags, value: bool) {
         self.flags.set(flag, value);
     }

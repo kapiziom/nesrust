@@ -7,17 +7,17 @@ mod stack;
 
 use crate::emulator::bus::cpu_bus::CpuBus;
 pub use operation_codes::*;
-use addressing::AddressingMode;
+use addressing::{AddressingMode, Access};
 use crate::emulator::cpu::flags::CpuFlags;
 
-pub struct CPU<'a> {
+pub struct CPU<B: CpuBus> {
     pub (super) register_a: u8,
     pub (super) register_x: u8,
     pub (super) register_y: u8,
     pub (super) stack_pointer: u8,
     pub program_counter: u16,
     pub (super) flags: flags::CpuFlags,
-    pub bus: Box<dyn CpuBus + 'a>,
+    pub bus: B,
     /// Total CPU cycles executed since creation (for tracing/test comparison).
     pub cycles: u64,
 }
@@ -29,14 +29,15 @@ pub struct CpuState {
     pub a: u8,
     pub x: u8,
     pub y: u8,
-    /// Status register as stored (including the internal BREAK bit).
+    /// Status register as stored (B is never set: it only exists in the copy pushed to the stack).
     pub p: u8,
     pub sp: u8,
 }
 
-impl<'a> CPU<'a> {
-    pub fn new<'b>(bus: Box<dyn CpuBus + 'b>) -> CPU<'b> {
-        return CPU {
+impl<B: CpuBus> CPU<B> {
+    /// Creates a CPU in the register state a RESET leaves behind (use `reset()` to also load PC from the vector).
+    pub fn new(bus: B) -> CPU<B> {
+        CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
@@ -45,7 +46,7 @@ impl<'a> CPU<'a> {
             flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::UNUSED,
             bus,
             cycles: 0,
-        };
+        }
     }
 
     pub fn state(&self) -> CpuState {
@@ -75,8 +76,7 @@ impl<'a> CPU<'a> {
             return true;
         }
 
-        let operation_code = self.mem_read(self.program_counter);
-        self.process_operation(operation_code)
+        self.execute_next()
     }
 
     /// Runs until `program_end`, an unknown opcode, or a BRK (BRK is executed, then used as the end-of-program marker).
@@ -86,12 +86,12 @@ impl<'a> CPU<'a> {
                 continue;
             }
 
-            let operation_code = self.mem_read(self.program_counter);
+            let operation_code = self.peek(self.program_counter);
 
-            println!("interpret: op_code: {:#X}", operation_code);
+            log::trace!("pc: {:#06X} op_code: {:#04X}", self.program_counter, operation_code);
 
-            if !self.process_operation(operation_code) || operation_code == 0x00 {
-                println!("Program end");
+            if !self.execute_next() || operation_code == 0x00 {
+                log::debug!("program end");
                 break
             }
         }
@@ -104,336 +104,188 @@ impl<'a> CPU<'a> {
                 continue;
             }
 
-            let operation_code = self.mem_read(self.program_counter);
-
-            println!("interpret: op_code: {:#X}", operation_code);
+            let operation_code = self.peek(self.program_counter);
 
             if operation_code == 0x00 && skip_brk {
-                println!("End of test program reached");
                 break;
             }
 
-            if !self.process_operation(operation_code) || operation_code == 0x00 {
-                println!("Program end");
+            if !self.execute_next() || operation_code == 0x00 {
                 break;
             }
         }
     }
 
-    fn process_operation(&mut self, operation_code: u8) -> bool {
-        self.program_counter += 1;
+    /// Fetches and executes one instruction (no interrupt polling).
+    fn execute_next(&mut self) -> bool {
+        let operation_code = self.fetch();
 
-        let mut is_jump = false;
+        let Some(op) = CPU_OPERATION_TABLE[operation_code as usize] else {
+            log::warn!("unknown operation code {:#04X}", operation_code);
+            return false;
+        };
 
-        if let Some(op_code_info) = CPU_OPERATION_CODES_MAP.get(&operation_code) {
-            // evaluated before the instruction runs, while registers still hold their pre-instruction values
-            let page_cross_penalty = op_code_info.has_page_cross_penalty()
-                && self.page_crossed(&op_code_info.addressing_mode);
+        self.execute(&op);
+        true
+    }
 
-            match operation_code {
-                // BRK - Force Interrupt
-                0x00 => {
-                    // BRK has a padding byte: the pushed return address is opcode + 2
-                    self.program_counter = self.program_counter.wrapping_add(1);
-                    self.handle_interrupt(interrupts::BRK);
-                    return true;
-                },
-                // ADC - Add with Carry
-                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71
-                => self.adc(&op_code_info.addressing_mode),
-                // AND - Logical AND
-                0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31
-                => self.and(&op_code_info.addressing_mode),
-                // ASL - Arithmetic Shift Left
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E
-                => self.asl(&op_code_info.addressing_mode),
-                // BCC - Branch if Carry Clear
-                0x90
-                => self.bcc(),
-                // BCS - Branch if Carry Set
-                0xB0
-                => self.bcs(),
-                // BEQ - Branch if Equal
-                0xF0
-                => self.beq(),
-                // BIT - Bit Test
-                0x24 | 0x2C
-                => self.bit(&op_code_info.addressing_mode),
-                // BMI - Branch if Minus
-                0x30
-                => self.bmi(),
-                // BNE - Branch if Not Equal
-                0xD0
-                => self.bne(),
-                // BPL - Branch if Positive
-                0x10
-                => self.bpl(),
-                // BVC - Branch if Overflow Clear
-                0x50
-                => self.bvc(),
-                // BVS - Branch if Overflow Set
-                0x70
-                => self.bvs(),
-                // CLC - Clear Carry Flag
-                0x18
-                => self.clc(),
-                // CLD - Clear Decimal Mode
-                0xD8
-                => self.cld(),
-                // CLI - Clear Interrupt Disable
-                0x58
-                => self.cli(),
-                // CLV - Clear Overflow Flag
-                0xB8
-                => self.clv(),
-                // CMP - Compare
-                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1
-                => self.cmp(&op_code_info.addressing_mode),
-                // CPX - Compare X Register
-                0xE0 | 0xE4 | 0xEC
-                => self.cpx(&op_code_info.addressing_mode),
-                // CPY - Compare Y Register
-                0xC0 | 0xC4 | 0xCC
-                => self.cpy(&op_code_info.addressing_mode),
-                // DEC - Decrement Memory
-                0xC6 | 0xD6 | 0xCE | 0xDE
-                => self.dec(&op_code_info.addressing_mode),
-                // DEX - Decrement X Register
-                0xCA
-                => self.dex(),
-                // DEY - Decrement Y Register
-                0x88
-                => self.dey(),
-                // EOR - Exclusive OR
-                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51
-                => self.eor(&op_code_info.addressing_mode),
-                // INC - Increment Memory
-                0xE6 | 0xF6 | 0xEE | 0xFE
-                => self.inc(&op_code_info.addressing_mode),
-                // INX - Increment X Register
-                0xE8
-                => self.inx(),
-                // INY - Increment Y Register
-                0xC8
-                => self.iny(),
-                // JMP - Jump
-                0x4C | 0x6C => {
-                    self.jmp(&op_code_info.addressing_mode);
-                    is_jump = true
-                },
-                // JSR - Jump to Subroutine
-                0x20 => {
-                    self.jsr();
-                    is_jump = true
-                },
-                // LDA - Load Accumulator
-                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1
-                => self.lda(&op_code_info.addressing_mode),
-                // LDX - Load X Register
-                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE
-                => self.ldx(&op_code_info.addressing_mode),
-                // LDY - Load Y Register
-                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC
-                => self.ldy(&op_code_info.addressing_mode),
-                // LSR - Logical Shift Right
-                0x4A | 0x46 | 0x56 | 0x4E | 0x5E
-                => self.lsr(&op_code_info.addressing_mode),
-                // NOP - No Operation
-                0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA
-                => self.nop(),
-                // unofficial NOP (DOP/TOP) - reads and discards an operand
-                0x80 | 0x82 | 0x89 | 0xC2 | 0xE2
-                | 0x04 | 0x44 | 0x64
-                | 0x14 | 0x34 | 0x54 | 0x74 | 0xD4 | 0xF4
-                | 0x0C
-                | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC
-                => self.nop_with_operand(&op_code_info.addressing_mode),
-                // LAX - LDA + LDX (unofficial)
-                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3
-                => self.lax(&op_code_info.addressing_mode),
-                // SAX - Store A & X (unofficial)
-                0x87 | 0x97 | 0x8F | 0x83
-                => self.sax(&op_code_info.addressing_mode),
-                // DCP - DEC + CMP (unofficial)
-                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3
-                => self.dcp(&op_code_info.addressing_mode),
-                // ISB - INC + SBC (unofficial)
-                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3
-                => self.isb(&op_code_info.addressing_mode),
-                // SLO - ASL + ORA (unofficial)
-                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13
-                => self.slo(&op_code_info.addressing_mode),
-                // RLA - ROL + AND (unofficial)
-                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33
-                => self.rla(&op_code_info.addressing_mode),
-                // SRE - LSR + EOR (unofficial)
-                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53
-                => self.sre(&op_code_info.addressing_mode),
-                // RRA - ROR + ADC (unofficial)
-                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73
-                => self.rra(&op_code_info.addressing_mode),
-                // ANC - AND #imm, C = N (unofficial)
-                0x0B | 0x2B
-                => self.anc(&op_code_info.addressing_mode),
-                // ALR - AND #imm, LSR A (unofficial)
-                0x4B
-                => self.alr(&op_code_info.addressing_mode),
-                // ARR - AND #imm, ROR A (unofficial)
-                0x6B
-                => self.arr(&op_code_info.addressing_mode),
-                // AXS - X = (A & X) - #imm (unofficial)
-                0xCB
-                => self.axs(&op_code_info.addressing_mode),
-                // ORA - Logical Inclusive OR
-                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11
-                => self.ora(&op_code_info.addressing_mode),
-                // PHA - Push Accumulator
-                0x48
-                => self.pha(),
-                // PHP - Push Processor Status
-                0x08
-                => self.php(),
-                // PLA - Pull Accumulator
-                0x68
-                => self.pla(),
-                // PLP - Pull Processor Status
-                0x28
-                => self.plp(),
-                // ROL - Rotate Left
-                0x2A | 0x26 | 0x36 | 0x2E | 0x3E
-                => self.rol(&op_code_info.addressing_mode),
-                // ROR - Rotate Right
-                0x6A | 0x66 | 0x76 | 0x6E | 0x7E
-                => self.ror(&op_code_info.addressing_mode),
-                // RTI - Return from Interrupt
-                0x40
-                => self.rti(),
-                // RTS - Return from Subroutine
-                0x60
-                => self.rts(),
-                // SBC - Subtract with Carry
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 | 0xEB
-                => self.sbc(&op_code_info.addressing_mode),
-                // SEC - Set Carry Flag
-                0x38
-                => self.sec(),
-                // SED - Set Decimal Flag
-                0xF8
-                => self.sed(),
-                // SEI - Set Interrupt Disable
-                0x78
-                => self.sei(),
-                // STA - Store Accumulator
-                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91
-                => self.sta(&op_code_info.addressing_mode),
-                // STX - Store X Register
-                0x86 | 0x96 | 0x8E
-                => self.stx(&op_code_info.addressing_mode),
-                // STY - Store Y Register
-                0x84 | 0x94 | 0x8C
-                => self.sty(&op_code_info.addressing_mode),
-                // TAX - Transfer Accumulator to X
-                0xAA
-                => self.tax(),
-                // TAY - Transfer Accumulator to Y
-                0xA8
-                => self.tay(),
-                // TSX - Transfer Stack Pointer to X
-                0xBA
-                => self.tsx(),
-                // TXA - Transfer X to Accumulator
-                0x8A
-                => self.txa(),
-                // TXS - Transfer X to Stack Pointer
-                0x9A
-                => self.txs(),
-                // TYA - Transfer Y to Accumulator
-                0x98
-                => self.tya(),
-                _ => {
-                    println!("Unknown operation_code: {}", operation_code);
-                    return false;
+    fn execute(&mut self, op: &OperationCode) {
+        let mode = op.addressing_mode;
+
+        match op.mnemonic {
+            // read-type instructions
+            Mnemonic::ADC => { let value = self.read_operand(mode); self.adc(value) }
+            Mnemonic::AND => { let value = self.read_operand(mode); self.and(value) }
+            Mnemonic::BIT => { let value = self.read_operand(mode); self.bit(value) }
+            Mnemonic::CMP => { let value = self.read_operand(mode); self.compare(self.register_a, value) }
+            Mnemonic::CPX => { let value = self.read_operand(mode); self.compare(self.register_x, value) }
+            Mnemonic::CPY => { let value = self.read_operand(mode); self.compare(self.register_y, value) }
+            Mnemonic::EOR => { let value = self.read_operand(mode); self.eor(value) }
+            Mnemonic::LDA => { let value = self.read_operand(mode); self.set_register_a(value) }
+            Mnemonic::LDX => { let value = self.read_operand(mode); self.set_register_x(value) }
+            Mnemonic::LDY => { let value = self.read_operand(mode); self.set_register_y(value) }
+            Mnemonic::ORA => { let value = self.read_operand(mode); self.ora(value) }
+            Mnemonic::SBC => { let value = self.read_operand(mode); self.sbc(value) }
+            Mnemonic::NOP => {
+                if mode == AddressingMode::Implicit {
+                    self.implied();
+                } else {
+                    // unofficial NOP variants still perform the operand read
+                    self.read_operand(mode);
                 }
             }
 
-            self.tick(op_code_info.cycles);
+            // stores
+            Mnemonic::STA => self.store(mode, self.register_a),
+            Mnemonic::STX => self.store(mode, self.register_x),
+            Mnemonic::STY => self.store(mode, self.register_y),
 
-            if page_cross_penalty {
-                self.tick(1);
+            // read-modify-write
+            Mnemonic::ASL => self.modify(mode, |cpu, value| cpu.asl(value)),
+            Mnemonic::LSR => self.modify(mode, |cpu, value| cpu.lsr(value)),
+            Mnemonic::ROL => self.modify(mode, |cpu, value| cpu.rol(value)),
+            Mnemonic::ROR => self.modify(mode, |cpu, value| cpu.ror(value)),
+            Mnemonic::INC => self.modify(mode, |cpu, value| cpu.inc(value)),
+            Mnemonic::DEC => self.modify(mode, |cpu, value| cpu.dec(value)),
+
+            // branches
+            Mnemonic::BCC => { let taken = !self.contains_flag(CpuFlags::CARRY); self.branch(taken) }
+            Mnemonic::BCS => { let taken = self.contains_flag(CpuFlags::CARRY); self.branch(taken) }
+            Mnemonic::BEQ => { let taken = self.contains_flag(CpuFlags::ZERO); self.branch(taken) }
+            Mnemonic::BMI => { let taken = self.contains_flag(CpuFlags::NEGATIVE); self.branch(taken) }
+            Mnemonic::BNE => { let taken = !self.contains_flag(CpuFlags::ZERO); self.branch(taken) }
+            Mnemonic::BPL => { let taken = !self.contains_flag(CpuFlags::NEGATIVE); self.branch(taken) }
+            Mnemonic::BVC => { let taken = !self.contains_flag(CpuFlags::OVERFLOW); self.branch(taken) }
+            Mnemonic::BVS => { let taken = self.contains_flag(CpuFlags::OVERFLOW); self.branch(taken) }
+
+            // jumps, subroutines, interrupts
+            Mnemonic::JMP => self.program_counter = self.effective_address(mode, Access::Read),
+            Mnemonic::JSR => self.jsr(),
+            Mnemonic::RTS => self.rts(),
+            Mnemonic::RTI => self.rti(),
+            Mnemonic::BRK => {
+                // BRK has a padding byte: the pushed return address is opcode + 2
+                self.fetch();
+                self.enter_interrupt(interrupts::BRK);
             }
 
-            if !is_jump {
-                self.program_counter = self.program_counter + (op_code_info.bytes - 1) as u16;
+            // stack
+            Mnemonic::PHA => self.pha(),
+            Mnemonic::PHP => self.php(),
+            Mnemonic::PLA => self.pla(),
+            Mnemonic::PLP => self.plp(),
+
+            // flags
+            Mnemonic::CLC => { self.implied(); self.clear_flag(CpuFlags::CARRY) }
+            Mnemonic::CLD => { self.implied(); self.clear_flag(CpuFlags::DECIMAL_MODE) }
+            Mnemonic::CLI => { self.implied(); self.clear_flag(CpuFlags::INTERRUPT_DISABLE) }
+            Mnemonic::CLV => { self.implied(); self.clear_flag(CpuFlags::OVERFLOW) }
+            Mnemonic::SEC => { self.implied(); self.insert_flag(CpuFlags::CARRY) }
+            Mnemonic::SED => { self.implied(); self.insert_flag(CpuFlags::DECIMAL_MODE) }
+            Mnemonic::SEI => { self.implied(); self.insert_flag(CpuFlags::INTERRUPT_DISABLE) }
+
+            // register operations
+            Mnemonic::DEX => { self.implied(); self.set_register_x(self.register_x.wrapping_sub(1)) }
+            Mnemonic::DEY => { self.implied(); self.set_register_y(self.register_y.wrapping_sub(1)) }
+            Mnemonic::INX => { self.implied(); self.set_register_x(self.register_x.wrapping_add(1)) }
+            Mnemonic::INY => { self.implied(); self.set_register_y(self.register_y.wrapping_add(1)) }
+            Mnemonic::TAX => { self.implied(); self.set_register_x(self.register_a) }
+            Mnemonic::TAY => { self.implied(); self.set_register_y(self.register_a) }
+            Mnemonic::TSX => { self.implied(); self.set_register_x(self.stack_pointer) }
+            Mnemonic::TXA => { self.implied(); self.set_register_a(self.register_x) }
+            Mnemonic::TXS => { self.implied(); self.stack_pointer = self.register_x }
+            Mnemonic::TYA => { self.implied(); self.set_register_a(self.register_y) }
+
+            // unofficial opcodes
+            Mnemonic::LAX => {
+                let value = self.read_operand(mode);
+                self.register_a = value;
+                self.set_register_x(value);
             }
-
-            true
-        }
-        else {
-            println!("Unknown operation_code: {}", operation_code);
-            false
-        }
-    }
-
-    fn get_operand(&mut self, mode: &AddressingMode) -> u8 {
-        match mode {
-            AddressingMode::Implicit => 0,
-            AddressingMode::Accumulator => self.get_accumulator(),
-            AddressingMode::Immediate => self.get_immediate(),
-            AddressingMode::ZeroPage => self.get_zero_page(),
-            AddressingMode::ZeroPageX => self.get_zero_page_x(),
-            AddressingMode::ZeroPageY => self.get_zero_page_y(),
-            AddressingMode::Relative => self.get_relative(),
-            AddressingMode::Absolute => self.get_absolute(),
-            AddressingMode::AbsoluteX => self.get_absolute_x(),
-            AddressingMode::AbsoluteY => self.get_absolute_y(),
-            AddressingMode::Indirect => self.get_indirect(),
-            AddressingMode::IndirectX => self.get_indirect_x(),
-            AddressingMode::IndirectY => self.get_indirect_y(),
-        }
-    }
-
-    fn get_address(&mut self, mode: &AddressingMode) -> u16 {
-        match mode {
-            AddressingMode::Implicit => 0,
-            AddressingMode::Accumulator => 0,
-            AddressingMode::ZeroPage => self.get_zero_page_address(),
-            AddressingMode::ZeroPageX => self.get_zero_page_x_address(),
-            AddressingMode::ZeroPageY => self.get_zero_page_y_address(),
-            AddressingMode::Absolute => self.get_absolute_address(),
-            AddressingMode::AbsoluteX => self.get_absolute_x_address(),
-            AddressingMode::AbsoluteY => self.get_absolute_y_address(),
-            AddressingMode::Indirect => self.get_indirect_address(),
-            AddressingMode::IndirectX => self.get_indirect_x_address(),
-            AddressingMode::IndirectY => self.get_indirect_y_address(),
-            _ => panic!("Unsupported addressing mode for get_address")
+            Mnemonic::SAX => self.store(mode, self.register_a & self.register_x),
+            Mnemonic::DCP => self.modify(mode, |cpu, value| {
+                let result = cpu.dec(value);
+                cpu.compare(cpu.register_a, result);
+                result
+            }),
+            Mnemonic::ISB => self.modify(mode, |cpu, value| {
+                let result = cpu.inc(value);
+                cpu.sbc(result);
+                result
+            }),
+            Mnemonic::SLO => self.modify(mode, |cpu, value| {
+                let result = cpu.asl(value);
+                cpu.ora(result);
+                result
+            }),
+            Mnemonic::RLA => self.modify(mode, |cpu, value| {
+                let result = cpu.rol(value);
+                cpu.and(result);
+                result
+            }),
+            Mnemonic::SRE => self.modify(mode, |cpu, value| {
+                let result = cpu.lsr(value);
+                cpu.eor(result);
+                result
+            }),
+            Mnemonic::RRA => self.modify(mode, |cpu, value| {
+                let result = cpu.ror(value); // its carry-out is the ADC's carry-in
+                cpu.adc(result);
+                result
+            }),
+            Mnemonic::ANC => { let value = self.read_operand(mode); self.anc(value) }
+            Mnemonic::ALR => { let value = self.read_operand(mode); self.alr(value) }
+            Mnemonic::ARR => { let value = self.read_operand(mode); self.arr(value) }
+            Mnemonic::AXS => { let value = self.read_operand(mode); self.axs(value) }
         }
     }
 
-    pub (super) fn mem_read(&mut self, pos: u16) -> u8 {
-        self.bus.read(pos)
+    /// One CPU cycle in which the bus is not used (the bus and everything behind it still advances).
+    pub (super) fn tick(&mut self) {
+        self.cycles += 1;
+        self.bus.tick(1);
     }
 
-    pub (super) fn mem_read_u16(&mut self, pos: u16) -> u16 {
-        self.bus.read_u16(pos)
+    /// Bus read; costs one CPU cycle.
+    pub (super) fn read(&mut self, address: u16) -> u8 {
+        self.tick();
+        self.bus.read(address)
     }
 
-    pub (super) fn mem_write(&mut self, pos: u16, data: u8) {
-        self.bus.write(pos, data);
+    /// Bus write; costs one CPU cycle.
+    pub (super) fn write(&mut self, address: u16, data: u8) {
+        self.tick();
+        self.bus.write(address, data);
     }
 
-    pub (super) fn set_register_a(&mut self, data: u8) {
-        self.register_a = data;
-        self.update_zero_and_negative_flags(self.register_a);
+    /// Bus read without cycle cost, for tests and debugging.
+    pub fn peek(&mut self, address: u16) -> u8 {
+        self.bus.read(address)
     }
 
-    pub (super) fn set_register_x(&mut self, data: u8) {
-        self.register_x = data;
-        self.update_zero_and_negative_flags(self.register_x);
-    }
-
-    pub (super) fn tick(&mut self, cycles: u8) {
-        self.cycles += cycles as u64;
-        self.bus.tick(cycles)
+    /// Bus write without cycle cost, for tests and debugging.
+    pub fn poke(&mut self, address: u16, data: u8) {
+        self.bus.write(address, data);
     }
 }
 
@@ -442,12 +294,12 @@ mod test {
     use super::*;
     use crate::emulator::bus::mock_bus::MockBus;
 
-    fn prepare_test_cpu(program: &[u8]) -> CPU {
+    fn prepare_test_cpu(program: &[u8]) -> CPU<MockBus> {
         let mut bus = MockBus::new();
 
         bus.load_program(&program, 0x8000);
 
-        let mut cpu = CPU::new(Box::new(bus));
+        let mut cpu = CPU::new(bus);
 
         cpu.program_counter = 0x8000;
 
@@ -466,7 +318,7 @@ mod test {
         cpu.interpret(get_program_end(cpu.program_counter, program.len()));
 
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.mem_read(0x00), 0x05);
+        assert_eq!(cpu.peek(0x00), 0x05);
     }
 
     #[test]
@@ -478,8 +330,8 @@ mod test {
 
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
 
-        cpu.mem_write(0xFFFE, 0x34); // lo
-        cpu.mem_write(0xFFFF, 0x12); // hi
+        cpu.poke(0xFFFE, 0x34); // lo
+        cpu.poke(0xFFFF, 0x12); // hi
 
         cpu.interpret(program_end);
 
@@ -502,9 +354,9 @@ mod test {
     fn test_brk_does_not_stop_step() {
         let program = [0x00, 0xEA];
         let mut cpu = prepare_test_cpu(&program);
-        cpu.mem_write(0xFFFE, 0x00);
-        cpu.mem_write(0xFFFF, 0x90);
-        cpu.mem_write(0x9000, 0xEA); // NOP at the handler
+        cpu.poke(0xFFFE, 0x00);
+        cpu.poke(0xFFFF, 0x90);
+        cpu.poke(0x9000, 0xEA); // NOP at the handler
 
         assert!(cpu.step());
         assert_eq!(cpu.program_counter, 0x9000);
@@ -515,13 +367,13 @@ mod test {
 
     #[test]
     fn test_initial_status_is_reset_state() {
-        let cpu = CPU::new(Box::new(MockBus::new()));
+        let cpu = CPU::new(MockBus::new());
 
         assert_eq!(cpu.state().p, 0x24);
         assert_eq!(cpu.state().sp, 0xFD);
     }
 
-    fn interrupt_test_cpu(configure: impl FnOnce(&mut MockBus)) -> CPU<'static> {
+    fn interrupt_test_cpu(configure: impl FnOnce(&mut MockBus)) -> CPU<MockBus> {
         let mut bus = MockBus::new();
         bus.load_program(&[0xEA, 0xEA], 0x8000); // NOP, NOP
         bus.memory[0xFFFA] = 0x00; // NMI vector -> $9000
@@ -530,7 +382,7 @@ mod test {
         bus.memory[0xFFFF] = 0xA0;
         configure(&mut bus);
 
-        let mut cpu = CPU::new(Box::new(bus));
+        let mut cpu = CPU::new(bus);
         cpu.program_counter = 0x8000;
         cpu
     }
@@ -560,7 +412,7 @@ mod test {
         let mut cpu = interrupt_test_cpu(|bus| bus.nmi_interrupt = Some(1));
 
         cpu.step(); // NMI
-        cpu.mem_write(0x9000, 0xEA);
+        cpu.poke(0x9000, 0xEA);
         cpu.step(); // NOP in the handler, no second NMI
 
         assert_eq!(cpu.program_counter, 0x9001);
@@ -667,7 +519,7 @@ mod test {
         let mut cpu = prepare_test_cpu(&program);
 
         cpu.register_a = 0b11001100; // 204
-        cpu.mem_write(0x2000, 0b10101010); // 170
+        cpu.poke(0x2000, 0b10101010); // 170
 
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), false);
 
@@ -680,7 +532,7 @@ mod test {
         let mut cpu = prepare_test_cpu(&program);
 
         cpu.register_a = 0b11001100; // 204
-        cpu.mem_write(0x00, 0b10101010); // 170
+        cpu.poke(0x00, 0b10101010); // 170
 
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), false);
 
@@ -705,11 +557,11 @@ mod test {
         let program = vec![0x06, 0x00]; // ASL $00
         let mut cpu = prepare_test_cpu(&program);
 
-        cpu.mem_write(0x00, 0b11001100); // 204
+        cpu.poke(0x00, 0b11001100); // 204
 
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), false);
 
-        assert_eq!(cpu.mem_read(0x00), 0b10011000); // 152
+        assert_eq!(cpu.peek(0x00), 0b10011000); // 152
         assert!(cpu.flags.contains(CpuFlags::CARRY));
     }
 
@@ -814,8 +666,8 @@ mod test {
         let mut cpu = prepare_test_cpu(&program);
 
         // set up the JMP indirect
-        cpu.mem_write(0x2000, 0x78); // LSB
-        cpu.mem_write(0x2001, 0x56); // MSB
+        cpu.poke(0x2000, 0x78); // LSB
+        cpu.poke(0x2001, 0x56); // MSB
 
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), true);
 
@@ -840,7 +692,7 @@ mod test {
         assert_eq!(cpu.pop_stack(), 0x80, "High byte of return address should be on the stack");
     }
 
-    fn run_single(program: &[u8], setup: impl FnOnce(&mut CPU)) -> CPU {
+    fn run_single(program: &[u8], setup: impl FnOnce(&mut CPU<MockBus>)) -> CPU<MockBus> {
         let mut cpu = prepare_test_cpu(program);
         setup(&mut cpu);
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), true);
@@ -848,22 +700,75 @@ mod test {
     }
 
     #[test]
-    fn test_every_table_opcode_is_dispatched() {
+    fn test_opcode_table_is_consistent() {
         let mut seen = std::collections::HashSet::new();
 
-        for op in CPU_OPERATION_CODES_VEC.iter() {
+        for op in CPU_OPERATION_CODES.iter() {
             assert!(seen.insert(op.code), "duplicate opcode {:#04X}", op.code);
-
-            if op.code == 0x00 {
-                continue; // BRK ends the interpreter loop by design
-            }
-
-            let program = [op.code, 0x10, 0x20];
-            let mut cpu = prepare_test_cpu(&program);
-            assert!(cpu.process_operation(op.code), "opcode {:#04X} ({}) is in the table but not dispatched", op.code, op.mnemonic);
+            assert!(CPU_OPERATION_TABLE[op.code as usize].is_some());
         }
 
-        assert_eq!(CPU_OPERATION_CODES_VEC.iter().filter(|op| op.official).count(), 151);
+        assert_eq!(CPU_OPERATION_CODES.iter().filter(|op| op.official).count(), 151);
+        assert_eq!(CPU_OPERATION_TABLE.iter().flatten().count(), CPU_OPERATION_CODES.len());
+    }
+
+    /// The CPU derives timing from bus accesses; the cycle counts in the table must agree with it
+    /// (no page crossing, branches not taken) and PC must advance by the instruction length.
+    #[test]
+    fn test_every_opcode_takes_table_cycles_and_advances_pc() {
+        for op in CPU_OPERATION_CODES.iter() {
+            if op.addressing_mode == AddressingMode::Relative {
+                continue; // branch timing depends on the outcome, see the branch tests
+            }
+
+            let program = [op.code, 0x00, 0x00];
+            let mut cpu = prepare_test_cpu(&program);
+
+            assert!(cpu.step(), "opcode {:#04X} {:?} not executed", op.code, op.mnemonic);
+
+            assert_eq!(cpu.cycles, op.cycles as u64, "cycles of {:#04X} {:?} {:?}", op.code, op.mnemonic, op.addressing_mode);
+
+            let jumps = matches!(op.mnemonic, Mnemonic::JMP | Mnemonic::JSR | Mnemonic::RTS | Mnemonic::RTI | Mnemonic::BRK);
+            if !jumps {
+                assert_eq!(cpu.program_counter, 0x8000 + op.bytes as u16, "length of {:#04X} {:?} {:?}", op.code, op.mnemonic, op.addressing_mode);
+            }
+        }
+    }
+
+    #[test]
+    fn test_branch_cycles() {
+        // BEQ +2 at $8000: not taken 2, taken 3, taken across a page 4
+        let not_taken = run_single(&[0xF0, 0x02], |_| {});
+        let taken = run_single(&[0xF0, 0x02], |cpu| cpu.insert_flag(CpuFlags::ZERO));
+        let crossed = run_single(&[0xF0, 0x7F], |cpu| {
+            cpu.program_counter = 0x80F0; // next instruction $80F2, target $8171
+            cpu.poke(0x80F0, 0xF0);
+            cpu.poke(0x80F1, 0x7F);
+            cpu.insert_flag(CpuFlags::ZERO);
+        });
+
+        assert_eq!(not_taken.cycles, 2);
+        assert_eq!(taken.cycles, 3);
+        assert_eq!(taken.program_counter, 0x8004);
+        assert_eq!(crossed.cycles, 4);
+    }
+
+    #[test]
+    fn test_reset_loads_vector_and_takes_seven_cycles() {
+        let mut bus = MockBus::new();
+        bus.memory[0xFFFC] = 0x34;
+        bus.memory[0xFFFD] = 0x12;
+        let mut cpu = CPU::new(bus);
+        cpu.register_a = 0x55;
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+
+        cpu.reset();
+
+        assert_eq!(cpu.program_counter, 0x1234);
+        assert_eq!(cpu.stack_pointer, 0xFA);
+        assert_eq!(cpu.cycles, 7);
+        assert!(cpu.flags.contains(CpuFlags::INTERRUPT_DISABLE));
+        assert_eq!(cpu.register_a, 0x55);
     }
 
     #[test]
@@ -886,7 +791,7 @@ mod test {
 
     #[test]
     fn test_lax_zero_page() {
-        let cpu = run_single(&[0xA7, 0x10], |cpu| cpu.mem_write(0x10, 0x80));
+        let cpu = run_single(&[0xA7, 0x10], |cpu| cpu.poke(0x10, 0x80));
 
         assert_eq!(cpu.register_a, 0x80);
         assert_eq!(cpu.register_x, 0x80);
@@ -897,10 +802,10 @@ mod test {
     #[test]
     fn test_lax_indirect_y() {
         let cpu = run_single(&[0xB3, 0x20], |cpu| {
-            cpu.mem_write(0x20, 0x00);
-            cpu.mem_write(0x21, 0x30);
+            cpu.poke(0x20, 0x00);
+            cpu.poke(0x21, 0x30);
             cpu.register_y = 0x05;
-            cpu.mem_write(0x3005, 0x7F);
+            cpu.poke(0x3005, 0x7F);
         });
 
         assert_eq!(cpu.register_a, 0x7F);
@@ -911,15 +816,15 @@ mod test {
     fn test_sax_zero_page() {
         let mut cpu = run_single(&[0x87, 0x10], |cpu| { cpu.register_a = 0xF0; cpu.register_x = 0x3C; });
 
-        assert_eq!(cpu.mem_read(0x10), 0x30);
+        assert_eq!(cpu.peek(0x10), 0x30);
         assert!(!cpu.flags.contains(CpuFlags::ZERO), "SAX does not touch flags");
     }
 
     #[test]
     fn test_dcp_zero_page() {
-        let mut cpu = run_single(&[0xC7, 0x10], |cpu| { cpu.mem_write(0x10, 0x10); cpu.register_a = 0x0F; });
+        let mut cpu = run_single(&[0xC7, 0x10], |cpu| { cpu.poke(0x10, 0x10); cpu.register_a = 0x0F; });
 
-        assert_eq!(cpu.mem_read(0x10), 0x0F);
+        assert_eq!(cpu.peek(0x10), 0x0F);
         assert_eq!(cpu.register_a, 0x0F);
         assert!(cpu.flags.contains(CpuFlags::ZERO));
         assert!(cpu.flags.contains(CpuFlags::CARRY));
@@ -928,21 +833,21 @@ mod test {
     #[test]
     fn test_isb_zero_page() {
         let mut cpu = run_single(&[0xE7, 0x10], |cpu| {
-            cpu.mem_write(0x10, 0x0F);
+            cpu.poke(0x10, 0x0F);
             cpu.register_a = 0x20;
             cpu.insert_flag(CpuFlags::CARRY);
         });
 
-        assert_eq!(cpu.mem_read(0x10), 0x10);
+        assert_eq!(cpu.peek(0x10), 0x10);
         assert_eq!(cpu.register_a, 0x10); // 0x20 - 0x10
         assert!(cpu.flags.contains(CpuFlags::CARRY));
     }
 
     #[test]
     fn test_slo_zero_page() {
-        let mut cpu = run_single(&[0x07, 0x10], |cpu| { cpu.mem_write(0x10, 0x81); cpu.register_a = 0x01; });
+        let mut cpu = run_single(&[0x07, 0x10], |cpu| { cpu.poke(0x10, 0x81); cpu.register_a = 0x01; });
 
-        assert_eq!(cpu.mem_read(0x10), 0x02);
+        assert_eq!(cpu.peek(0x10), 0x02);
         assert_eq!(cpu.register_a, 0x03);
         assert!(cpu.flags.contains(CpuFlags::CARRY));
     }
@@ -950,21 +855,21 @@ mod test {
     #[test]
     fn test_rla_zero_page() {
         let mut cpu = run_single(&[0x27, 0x10], |cpu| {
-            cpu.mem_write(0x10, 0x81);
+            cpu.poke(0x10, 0x81);
             cpu.register_a = 0xFF;
             cpu.insert_flag(CpuFlags::CARRY);
         });
 
-        assert_eq!(cpu.mem_read(0x10), 0x03);
+        assert_eq!(cpu.peek(0x10), 0x03);
         assert_eq!(cpu.register_a, 0x03);
         assert!(cpu.flags.contains(CpuFlags::CARRY));
     }
 
     #[test]
     fn test_sre_zero_page() {
-        let mut cpu = run_single(&[0x47, 0x10], |cpu| { cpu.mem_write(0x10, 0x03); cpu.register_a = 0xFF; });
+        let mut cpu = run_single(&[0x47, 0x10], |cpu| { cpu.poke(0x10, 0x03); cpu.register_a = 0xFF; });
 
-        assert_eq!(cpu.mem_read(0x10), 0x01);
+        assert_eq!(cpu.peek(0x10), 0x01);
         assert_eq!(cpu.register_a, 0xFE);
         assert!(cpu.flags.contains(CpuFlags::CARRY));
         assert!(cpu.flags.contains(CpuFlags::NEGATIVE));
@@ -972,9 +877,9 @@ mod test {
 
     #[test]
     fn test_rra_zero_page() {
-        let mut cpu = run_single(&[0x67, 0x10], |cpu| { cpu.mem_write(0x10, 0x03); cpu.register_a = 0x10; });
+        let mut cpu = run_single(&[0x67, 0x10], |cpu| { cpu.poke(0x10, 0x03); cpu.register_a = 0x10; });
 
-        assert_eq!(cpu.mem_read(0x10), 0x01); // ROR: 0x03 >> 1, carry out = 1
+        assert_eq!(cpu.peek(0x10), 0x01); // ROR: 0x03 >> 1, carry out = 1
         assert_eq!(cpu.register_a, 0x12);     // ADC: 0x10 + 0x01 + carry(1)
         assert!(!cpu.flags.contains(CpuFlags::CARRY));
     }
@@ -1018,11 +923,11 @@ mod test {
     fn test_indirect_x_pointer_wraps_in_zero_page() {
         // LDA ($FF,X) with X=0: the pointer high byte comes from $0000, not $0100
         let cpu = run_single(&[0xA1, 0xFF], |cpu| {
-            cpu.mem_write(0x00FF, 0x00);
-            cpu.mem_write(0x0000, 0x04);
-            cpu.mem_write(0x0100, 0x05);
-            cpu.mem_write(0x0400, 0x5D);
-            cpu.mem_write(0x0500, 0x11);
+            cpu.poke(0x00FF, 0x00);
+            cpu.poke(0x0000, 0x04);
+            cpu.poke(0x0100, 0x05);
+            cpu.poke(0x0400, 0x5D);
+            cpu.poke(0x0500, 0x11);
         });
 
         assert_eq!(cpu.register_a, 0x5D);
@@ -1031,11 +936,11 @@ mod test {
     #[test]
     fn test_indirect_y_pointer_wraps_in_zero_page() {
         let cpu = run_single(&[0xB1, 0xFF], |cpu| {
-            cpu.mem_write(0x00FF, 0x00);
-            cpu.mem_write(0x0000, 0x04);
-            cpu.mem_write(0x0100, 0x05);
-            cpu.mem_write(0x0400, 0x5D);
-            cpu.mem_write(0x0500, 0x11);
+            cpu.poke(0x00FF, 0x00);
+            cpu.poke(0x0000, 0x04);
+            cpu.poke(0x0100, 0x05);
+            cpu.poke(0x0400, 0x5D);
+            cpu.poke(0x0500, 0x11);
         });
 
         assert_eq!(cpu.register_a, 0x5D);
