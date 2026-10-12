@@ -36,6 +36,7 @@ cargo test                    # all unit + integration tests (must stay green)
 cargo test cpu::              # a subset by path
 cargo clippy --all-targets    # lint; new code should not add warnings
 cargo fmt                     # format (rustfmt defaults)
+cargo clean                   # run when target/ grows to several GB (check with: du -sh target); next build is a full rebuild
 cargo run --release           # run the demo binary
 ```
 
@@ -65,5 +66,5 @@ cargo run --release           # run the demo binary
 - Small, reviewable changes: one concern per commit (e.g. "fix indirect-indexed zero-page wrap" separate from "add opcode table").
 - Before changing CPU/PPU timing, state which hardware behaviour the change targets and which test proves it.
 - If the plan and the code disagree, say so and propose an update to PLAN.md rather than silently diverging.
-- Don't add dependencies without a reason; unused ones (`hex`, `log`, `lazy_static`) should be removed or put to use.
+- Don't add dependencies without a reason; unused ones (`log`, `lazy_static`) should be removed or put to use.
 - Commit/push only when asked.

@@ -31,10 +31,6 @@ bitflags::bitflags! {
 
 
 impl<'a> CPU<'a> {
-    pub (super) fn get_status_register(&self) -> u8 {
-        self.flags.bits()
-    }
-
     pub (super) fn set_flag(&mut self, flag: CpuFlags, value: bool) {
         self.flags.set(flag, value);
     }

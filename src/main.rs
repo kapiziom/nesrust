@@ -1,6 +1,5 @@
 use std::fs;
 use nesrs::emulator::bus::Bus;
-use nesrs::emulator::bus::cpu_bus::CpuBus;
 use nesrs::emulator::cpu::CPU;
 use nesrs::emulator::rom::ROM;
 

@@ -328,7 +328,6 @@ impl<'a> CPU<'a> {
             AddressingMode::Indirect => self.get_indirect(),
             AddressingMode::IndirectX => self.get_indirect_x(),
             AddressingMode::IndirectY => self.get_indirect_y(),
-            _ => panic!("Unimplemented addressing mode")
         }
     }
 
@@ -369,11 +368,6 @@ impl<'a> CPU<'a> {
     pub (super) fn set_register_x(&mut self, data: u8) {
         self.register_x = data;
         self.update_zero_and_negative_flags(self.register_x);
-    }
-
-    pub (super) fn set_register_y(&mut self, data: u8) {
-        self.register_y = data;
-        self.update_zero_and_negative_flags(self.register_y);
     }
 
     pub (super) fn tick(&mut self, cycles: u8) {

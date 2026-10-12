@@ -90,22 +90,6 @@ impl<'a> CPU<'a> {
         self.branch_helper(should_branch);
     }
 
-    pub (super) fn brk(&mut self) {
-        self.program_counter = self.program_counter.wrapping_add(2);
-
-        self.push_stack((self.program_counter >> 8) as u8);
-        self.push_stack(self.program_counter as u8);
-
-        self.insert_flag(CpuFlags::BREAK);
-        self.insert_flag(CpuFlags::INTERRUPT_DISABLE);
-
-        self.push_stack(self.flags.bits());
-
-        let low_byte = self.mem_read(0xFFFE);
-        let high_byte = self.mem_read(0xFFFF);
-        self.program_counter = ((high_byte as u16) << 8) | (low_byte as u16);
-    }
-
     pub (super) fn bvc(&mut self) {
         let should_branch = !self.contains_flag(CpuFlags::OVERFLOW);
         self.branch_helper(should_branch);

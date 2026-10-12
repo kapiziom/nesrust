@@ -1,4 +1,3 @@
-use bitflags::Flags;
 use crate::emulator::cpu::CPU;
 use crate::emulator::cpu::flags::CpuFlags;
 

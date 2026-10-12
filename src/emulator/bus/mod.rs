@@ -1,7 +1,6 @@
 pub mod cpu_bus;
 pub mod mock_bus;
 
-use crate::emulator::bus::cpu_bus::CpuBus;
 use crate::emulator::ppu::PPU;
 use crate::emulator::ram::RAM;
 use crate::emulator::rom::ROM;
