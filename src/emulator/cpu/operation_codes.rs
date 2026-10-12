@@ -23,6 +23,13 @@ impl OperationCode {
 
     fn unofficial(code: u8, mnemonic: &'static str, addressing_mode: AddressingMode, bytes: u8, cycles: u8)
         -> Self { OperationCode { code, mnemonic, addressing_mode, bytes, cycles, official: false } }
+
+    /// Read instructions take one extra cycle when indexing crosses a page boundary.
+    /// Stores and read-modify-write instructions always take the worst-case cycles listed in the table.
+    pub fn has_page_cross_penalty(&self) -> bool {
+        matches!(self.addressing_mode, AddressingMode::AbsoluteX | AddressingMode::AbsoluteY | AddressingMode::IndirectY)
+            && matches!(self.mnemonic, "ADC" | "AND" | "CMP" | "EOR" | "LDA" | "LDX" | "LDY" | "ORA" | "SBC" | "NOP" | "LAX")
+    }
 }
 
 lazy_static! {

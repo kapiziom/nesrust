@@ -18,6 +18,20 @@ pub struct CPU<'a> {
     pub program_counter: u16,
     pub (super) flags: flags::CpuFlags,
     pub bus: Box<dyn CpuBus + 'a>,
+    /// Total CPU cycles executed since creation (for tracing/test comparison).
+    pub cycles: u64,
+}
+
+/// Snapshot of the programmer-visible CPU registers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CpuState {
+    pub pc: u16,
+    pub a: u8,
+    pub x: u8,
+    pub y: u8,
+    /// Status register as stored (including the internal BREAK bit).
+    pub p: u8,
+    pub sp: u8,
 }
 
 impl<'a> CPU<'a> {
@@ -30,7 +44,35 @@ impl<'a> CPU<'a> {
             program_counter: 0,
             flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::BREAK | CpuFlags::UNUSED,
             bus,
+            cycles: 0,
         };
+    }
+
+    pub fn state(&self) -> CpuState {
+        CpuState {
+            pc: self.program_counter,
+            a: self.register_a,
+            x: self.register_x,
+            y: self.register_y,
+            p: self.flags.bits(),
+            sp: self.stack_pointer,
+        }
+    }
+
+    pub fn set_state(&mut self, state: CpuState) {
+        self.program_counter = state.pc;
+        self.register_a = state.a;
+        self.register_x = state.x;
+        self.register_y = state.y;
+        self.flags = CpuFlags::from_bits_truncate(state.p);
+        self.stack_pointer = state.sp;
+    }
+
+    /// Executes a single instruction. Returns false when execution cannot continue
+    /// (BRK or an unknown opcode).
+    pub fn step(&mut self) -> bool {
+        let operation_code = self.mem_read(self.program_counter);
+        self.process_operation(operation_code)
     }
 
     pub fn interpret(&mut self, program_end: usize) {
@@ -75,6 +117,10 @@ impl<'a> CPU<'a> {
         let mut is_jump = false;
 
         if let Some(op_code_info) = CPU_OPERATION_CODES_MAP.get(&operation_code) {
+            // evaluated before the instruction runs, while registers still hold their pre-instruction values
+            let page_cross_penalty = op_code_info.has_page_cross_penalty()
+                && self.page_crossed(&op_code_info.addressing_mode);
+
             match operation_code {
                 // BRK - Force Interrupt
                 0x00 => {
@@ -301,6 +347,10 @@ impl<'a> CPU<'a> {
 
             self.tick(op_code_info.cycles);
 
+            if page_cross_penalty {
+                self.tick(1);
+            }
+
             if !is_jump {
                 self.program_counter = self.program_counter + (op_code_info.bytes - 1) as u16;
             }
@@ -371,6 +421,7 @@ impl<'a> CPU<'a> {
     }
 
     pub (super) fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as u64;
         self.bus.tick(cycles)
     }
 }
@@ -825,5 +876,65 @@ mod test {
         assert_eq!(cpu.register_x, 0x0A); // (0xFF & 0x0F) - 5
         assert!(cpu.flags.contains(CpuFlags::CARRY));
         assert_eq!(cpu.register_a, 0xFF);
+    }
+
+    #[test]
+    fn test_indirect_x_pointer_wraps_in_zero_page() {
+        // LDA ($FF,X) with X=0: the pointer high byte comes from $0000, not $0100
+        let cpu = run_single(&[0xA1, 0xFF], |cpu| {
+            cpu.mem_write(0x00FF, 0x00);
+            cpu.mem_write(0x0000, 0x04);
+            cpu.mem_write(0x0100, 0x05);
+            cpu.mem_write(0x0400, 0x5D);
+            cpu.mem_write(0x0500, 0x11);
+        });
+
+        assert_eq!(cpu.register_a, 0x5D);
+    }
+
+    #[test]
+    fn test_indirect_y_pointer_wraps_in_zero_page() {
+        let cpu = run_single(&[0xB1, 0xFF], |cpu| {
+            cpu.mem_write(0x00FF, 0x00);
+            cpu.mem_write(0x0000, 0x04);
+            cpu.mem_write(0x0100, 0x05);
+            cpu.mem_write(0x0400, 0x5D);
+            cpu.mem_write(0x0500, 0x11);
+        });
+
+        assert_eq!(cpu.register_a, 0x5D);
+    }
+
+    #[test]
+    fn test_page_cross_penalty_on_indexed_read() {
+        // LDA $20FF,X : 4 cycles, 5 when X pushes the address into the next page
+        let no_cross = run_single(&[0xBD, 0x00, 0x20], |cpu| cpu.register_x = 0x01);
+        let cross = run_single(&[0xBD, 0xFF, 0x20], |cpu| cpu.register_x = 0x01);
+
+        assert_eq!(no_cross.cycles, 4);
+        assert_eq!(cross.cycles, 5);
+    }
+
+    #[test]
+    fn test_no_page_cross_penalty_on_indexed_store() {
+        // STA $20FF,X always takes 5 cycles
+        let cross = run_single(&[0x9D, 0xFF, 0x20], |cpu| cpu.register_x = 0x01);
+
+        assert_eq!(cross.cycles, 5);
+    }
+
+    #[test]
+    fn test_branch_page_cross_is_relative_to_next_instruction() {
+        // BEQ at $80FE: next instruction is $8100, target $8105 -> same page, only +1 cycle
+        let mut program = vec![0xEA; 0xFE];
+        program.extend([0xF0, 0x05]);
+        let mut cpu = prepare_test_cpu(&program);
+        cpu.program_counter = 0x80FE;
+        cpu.insert_flag(CpuFlags::ZERO);
+
+        assert!(cpu.step());
+
+        assert_eq!(cpu.program_counter, 0x8105);
+        assert_eq!(cpu.cycles, 3);
     }
 }

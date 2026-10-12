@@ -568,14 +568,17 @@ impl<'a> CPU<'a> {
             self.tick(1);
 
             let offset = self.get_relative() as i8;
-            let old_pc = self.program_counter;
-            let new_pc = self.program_counter.wrapping_add(offset as u16);
+            // program_counter points at the offset byte; the caller advances it by one more
+            // after the instruction, so the branch target is relative to the next instruction
+            let next_instruction = self.program_counter.wrapping_add(1);
+            let target = next_instruction.wrapping_add(offset as u16);
 
-            if (old_pc & 0xFF00) != (new_pc & 0xFF00) {
+            // the page-cross penalty compares the next instruction's page with the target's
+            if (next_instruction & 0xFF00) != (target & 0xFF00) {
                 self.tick(1);
             }
 
-            self.program_counter = new_pc;
+            self.program_counter = target.wrapping_sub(1);
         }
     }
 }

@@ -4,11 +4,10 @@ Guidance for AI agents working in this repository.
 
 ## What this project is
 
-`nesrs` is a NES emulator in Rust. It is the first system of a planned **multi-console emulator desktop app**
-(Windows / Linux / macOS, most likely Tauri; NES first, then other retro consoles). So:
+`nesrs` is a NES emulator in Rust.
 
-- **Emulation cores must be frontend-agnostic**: no windowing, audio device, filesystem or threading inside core code.
-  A core takes bytes in (ROM, input) and produces bytes out (RGBA framebuffer, audio samples). It should compile for `wasm32` too.
+- **Emulation code does no I/O**: no windowing, audio device, filesystem or threading. It takes bytes in (ROM, input)
+  and produces bytes out (RGBA framebuffer, audio samples).
 - **Correctness first, then speed.** Every behaviour change should be backed by a test (unit test, or a reference-ROM/log comparison).
 - Roadmap and status: [.plans/PLAN.md](.plans/PLAN.md) (local only — `.plans/` is gitignored). Read it before starting non-trivial work and update its checkboxes when finishing a task.
 
@@ -18,14 +17,12 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 
 | Module | State |
 |---|---|
-| `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), interpreter-style, cycles ticked **after** each instruction. Several known bugs (see PLAN.md §1). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented. No page-cross penalty, no IRQ line. |
+| `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), interpreter-style, cycles ticked **after** each instruction (page-cross penalties included). **Passes nestest** (`tests/nestest.rs`, compares PC/A/X/Y/P/SP/CYC with the reference log). Remaining known bugs: see PLAN.md §1 (interrupts B/U flags, NMI ordering, BRK). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented. No IRQ line. |
 | `bus/` | `CpuBus` trait (`read(&self)`, `write`, `tick`, `fetch_nmi`), real `Bus` (RAM+PPU+ROM), `MockBus` (flat 64KB for CPU tests). APU/controller registers `panic!`. |
 | `rom/` | iNES parser (no NES 2.0, no bounds checks), mapper logic hard-coded as `match` (only NROM). PPU cannot access CHR yet. |
 | `ppu/` | Stub: timing counters + NMI flag only. Registers are **not** implemented. |
 | `apu/` | Empty. |
 | `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` with `println!` tracing. Most real ROMs panic on unimplemented APU/controller registers. |
-
-Target architecture (not yet created) is a Cargo workspace — see PLAN.md §3. When refactoring toward it, move code, don't rewrite working code.
 
 ## Commands
 
@@ -46,7 +43,7 @@ cargo run --release           # run the demo binary
 - **No `println!` / `eprintln!` in emulation code.** Use the `log` crate (`trace!` for per-instruction tracing, which must be compiled out/cheap when disabled) or a dedicated trace callback. Per-instruction printing destroys performance.
 - **No `panic!` for emulated-hardware behaviour.** Unmapped reads return open-bus/last-bus value, unmapped writes are ignored. Panics are acceptable only for programmer errors (broken invariants). Malformed ROM files return `Result::Err`, never panic.
 - Hot paths (CPU step, bus read/write, PPU dot) must not allocate, hash (`HashMap`), or use `lazy_static` lookups. Use `static`/`const` arrays indexed by opcode.
-- Prefer static dispatch (`CPU<B: Bus>`) over `Box<dyn Trait>` in per-cycle paths. Trait objects are fine at the *outermost* boundary (frontend ↔ console).
+- Prefer static dispatch (`CPU<B: Bus>`) over `Box<dyn Trait>` in per-cycle paths. Trait objects are fine at the outermost boundary.
 - Hardware reads can have side effects (PPU `$2002`, `$2007`, controller shift registers) — bus `read` takes `&mut self`.
 - Arithmetic on emulated registers/addresses uses explicit `wrapping_*` ops; emulated overflow must never trigger a Rust debug-mode panic.
 - Keep emulated component state in plain structs that are `Clone`able and later `serde`-serializable (save states, rewind). Don't hide state in `static`s or thread-locals.
