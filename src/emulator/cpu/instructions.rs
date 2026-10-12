@@ -1,91 +1,15 @@
-
 use crate::emulator::cpu::addressing::AddressingMode;
-use crate::emulator::cpu::{AddressingModeOperations, CPU};
-use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
-use crate::emulator::cpu::stack::StackOperations;
+use crate::emulator::cpu::CPU;
+use crate::emulator::cpu::flags::CpuFlags;
 
-pub trait CpuInstructions {
-    fn adc(&mut self, mode: &AddressingMode);
-    fn and(&mut self, mode: &AddressingMode);
-    fn asl(&mut self, mode: &AddressingMode);
-    fn bcc(&mut self);
-    fn bcs(&mut self);
-    fn beq(&mut self);
-    fn bit(&mut self, mode: &AddressingMode);
-    fn bmi(&mut self);
-    fn bne(&mut self);
-    fn bpl(&mut self);
-    fn brk(&mut self);
-    fn bvc(&mut self);
-    fn bvs(&mut self);
-    fn clc(&mut self);
-    fn cld(&mut self);
-    fn cli(&mut self);
-    fn clv(&mut self);
-    fn cmp(&mut self, mode: &AddressingMode);
-    fn cpx(&mut self, mode: &AddressingMode);
-    fn cpy(&mut self, mode: &AddressingMode);
-    fn dec(&mut self, mode: &AddressingMode);
-    fn dex(&mut self);
-    fn dey(&mut self);
-    fn eor(&mut self, mode: &AddressingMode);
-    fn inc(&mut self, mode: &AddressingMode);
-    fn inx(&mut self);
-    fn iny(&mut self);
-    fn jmp(&mut self, mode: &AddressingMode);
-    fn jsr(&mut self);
-    fn lda(&mut self, mode: &AddressingMode);
-    fn ldx(&mut self, mode: &AddressingMode);
-    fn ldy(&mut self, mode: &AddressingMode);
-    fn lsr(&mut self, mode: &AddressingMode);
-    fn nop(&mut self);
-    fn ora(&mut self, mode: &AddressingMode);
-    fn pha(&mut self);
-    fn php(&mut self);
-    fn pla(&mut self);
-    fn plp(&mut self);
-    fn rol(&mut self, mode: &AddressingMode);
-    fn ror(&mut self, mode: &AddressingMode);
-    fn rti(&mut self);
-    fn rts(&mut self);
-    fn sbc(&mut self, mode: &AddressingMode);
-    fn sec(&mut self);
-    fn sed(&mut self);
-    fn sei(&mut self);
-    fn sta(&mut self, mode: &AddressingMode);
-    fn stx(&mut self, mode: &AddressingMode);
-    fn sty(&mut self, mode: &AddressingMode);
-    fn tax(&mut self);
-    fn tay(&mut self);
-    fn tsx(&mut self);
-    fn txa(&mut self);
-    fn txs(&mut self);
-    fn tya(&mut self);
-
-    // unofficial opcodes
-    fn nop_with_operand(&mut self, mode: &AddressingMode);
-    fn lax(&mut self, mode: &AddressingMode);
-    fn sax(&mut self, mode: &AddressingMode);
-    fn dcp(&mut self, mode: &AddressingMode);
-    fn isb(&mut self, mode: &AddressingMode);
-    fn slo(&mut self, mode: &AddressingMode);
-    fn rla(&mut self, mode: &AddressingMode);
-    fn sre(&mut self, mode: &AddressingMode);
-    fn rra(&mut self, mode: &AddressingMode);
-    fn anc(&mut self, mode: &AddressingMode);
-    fn alr(&mut self, mode: &AddressingMode);
-    fn arr(&mut self, mode: &AddressingMode);
-    fn axs(&mut self, mode: &AddressingMode);
-}
-
-impl<'a> CpuInstructions for CPU<'a> {
-    fn adc(&mut self, mode: &AddressingMode) {
+impl<'a> CPU<'a> {
+    pub (super) fn adc(&mut self, mode: &AddressingMode) {
         let operand = self.get_operand(mode);
 
         self.add_to_accumulator(operand);
     }
 
-    fn and(&mut self, mode: &AddressingMode) {
+    pub (super) fn and(&mut self, mode: &AddressingMode) {
         let operand = self.get_operand(mode);
 
         self.register_a &= operand;
@@ -93,7 +17,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn asl(&mut self, mode: &AddressingMode) {
+    pub (super) fn asl(&mut self, mode: &AddressingMode) {
         let result: u8;
 
         match mode {
@@ -115,22 +39,22 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(result);
     }
 
-    fn bcc(&mut self) {
+    pub (super) fn bcc(&mut self) {
         let should_branch = !self.contains_flag(CpuFlags::CARRY);
         self.branch_helper(should_branch);
     }
 
-    fn bcs(&mut self) {
+    pub (super) fn bcs(&mut self) {
         let should_branch = self.contains_flag(CpuFlags::CARRY);
         self.branch_helper(should_branch);
     }
 
-    fn beq(&mut self) {
+    pub (super) fn beq(&mut self) {
         let should_branch = self.contains_flag(CpuFlags::ZERO);
         self.branch_helper(should_branch);
     }
 
-    fn bit(&mut self, mode: &AddressingMode) {
+    pub (super) fn bit(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         if value & 0b1000_0000 != 0 {
@@ -151,22 +75,22 @@ impl<'a> CpuInstructions for CPU<'a> {
         }
     }
 
-    fn bmi(&mut self) {
+    pub (super) fn bmi(&mut self) {
         let should_branch = self.contains_flag(CpuFlags::NEGATIVE);
         self.branch_helper(should_branch);
     }
 
-    fn bne(&mut self) {
+    pub (super) fn bne(&mut self) {
         let should_branch = !self.contains_flag(CpuFlags::ZERO);
         self.branch_helper(should_branch);
     }
 
-    fn bpl(&mut self) {
+    pub (super) fn bpl(&mut self) {
         let should_branch = !self.contains_flag(CpuFlags::NEGATIVE);
         self.branch_helper(should_branch);
     }
 
-    fn brk(&mut self) {
+    pub (super) fn brk(&mut self) {
         self.program_counter = self.program_counter.wrapping_add(2);
 
         self.push_stack((self.program_counter >> 8) as u8);
@@ -182,51 +106,51 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.program_counter = ((high_byte as u16) << 8) | (low_byte as u16);
     }
 
-    fn bvc(&mut self) {
+    pub (super) fn bvc(&mut self) {
         let should_branch = !self.contains_flag(CpuFlags::OVERFLOW);
         self.branch_helper(should_branch);
     }
 
-    fn bvs(&mut self) {
+    pub (super) fn bvs(&mut self) {
         let should_branch = self.contains_flag(CpuFlags::OVERFLOW);
         self.branch_helper(should_branch);
     }
 
-    fn clc(&mut self) {
+    pub (super) fn clc(&mut self) {
         self.clear_flag(CpuFlags::CARRY);
     }
 
-    fn cld(&mut self) {
+    pub (super) fn cld(&mut self) {
         self.clear_flag(CpuFlags::DECIMAL_MODE);
     }
 
-    fn cli(&mut self) {
+    pub (super) fn cli(&mut self) {
         self.clear_flag(CpuFlags::INTERRUPT_DISABLE);
     }
 
-    fn clv(&mut self) {
+    pub (super) fn clv(&mut self) {
         self.clear_flag(CpuFlags::OVERFLOW);
     }
 
-    fn cmp(&mut self, mode: &AddressingMode) {
+    pub (super) fn cmp(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.compare(self.register_a, value);
     }
 
-    fn cpx(&mut self, mode: &AddressingMode) {
+    pub (super) fn cpx(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.compare(self.register_x, value);
     }
 
-    fn cpy(&mut self, mode: &AddressingMode) {
+    pub (super) fn cpy(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.compare(self.register_y, value);
     }
 
-    fn dec(&mut self, mode: &AddressingMode) {
+    pub (super) fn dec(&mut self, mode: &AddressingMode) {
         let address = self.get_address(mode);
         let value = self.mem_read(address);
         let result = value.wrapping_sub(1);
@@ -235,17 +159,17 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(result);
     }
 
-    fn dex(&mut self) {
+    pub (super) fn dex(&mut self) {
         self.register_x = self.register_x.wrapping_sub(1);
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn dey(&mut self) {
+    pub (super) fn dey(&mut self) {
         self.register_y = self.register_y.wrapping_sub(1);
         self.update_zero_and_negative_flags(self.register_y);
     }
 
-    fn eor(&mut self, mode: &AddressingMode) {
+    pub (super) fn eor(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_a ^= value;
@@ -253,7 +177,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn inc(&mut self, mode: &AddressingMode) {
+    pub (super) fn inc(&mut self, mode: &AddressingMode) {
         let address = self.get_address(mode);
         let value = self.mem_read(address);
         let result = value.wrapping_add(1);
@@ -262,19 +186,19 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(result);
     }
 
-    fn inx(&mut self) {
+    pub (super) fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
 
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn iny(&mut self) {
+    pub (super) fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
 
         self.update_zero_and_negative_flags(self.register_y);
     }
 
-    fn jmp(&mut self, mode: &AddressingMode) {
+    pub (super) fn jmp(&mut self, mode: &AddressingMode) {
         let address = self.get_absolute_address();
 
         match mode {
@@ -296,7 +220,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         }
     }
 
-    fn jsr(&mut self) {
+    pub (super) fn jsr(&mut self) {
         let target_address = self.get_absolute_address();
 
         let return_address = self.program_counter.wrapping_add(2) - 1;
@@ -306,7 +230,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.program_counter = target_address;
     }
 
-    fn lda(&mut self, mode: &AddressingMode) {
+    pub (super) fn lda(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_a = value;
@@ -314,7 +238,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn ldx(&mut self, mode: &AddressingMode) {
+    pub (super) fn ldx(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_x = value;
@@ -322,7 +246,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn ldy(&mut self, mode: &AddressingMode) {
+    pub (super) fn ldy(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_y = value;
@@ -330,7 +254,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_y);
     }
 
-    fn lsr(&mut self, mode: &AddressingMode) {
+    pub (super) fn lsr(&mut self, mode: &AddressingMode) {
         match mode {
             AddressingMode::Accumulator => {
                 let carry = self.register_a & 0x01 != 0;
@@ -350,11 +274,11 @@ impl<'a> CpuInstructions for CPU<'a> {
         }
     }
 
-    fn nop(&mut self) {
+    pub (super) fn nop(&mut self) {
         // NOP - No Operation
     }
 
-    fn ora(&mut self, mode: &AddressingMode) {
+    pub (super) fn ora(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_a |= value;
@@ -362,21 +286,21 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn pha(&mut self) {
+    pub (super) fn pha(&mut self) {
         self.push_stack(self.register_a);
     }
 
-    fn php(&mut self) {
+    pub (super) fn php(&mut self) {
         let flags = self.flags.bits() | CpuFlags::BREAK.bits() | CpuFlags::UNUSED.bits();
         self.push_stack(flags);
     }
 
-    fn pla(&mut self) {
+    pub (super) fn pla(&mut self) {
         self.register_a = self.pop_stack();
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn plp(&mut self) {
+    pub (super) fn plp(&mut self) {
         let flags = self.pop_stack();
         let current_break_unused = self.flags.bits() & (CpuFlags::BREAK.bits() | CpuFlags::UNUSED.bits());
         let new_flags = (flags & !(CpuFlags::BREAK.bits() | CpuFlags::UNUSED.bits())) | current_break_unused;
@@ -384,7 +308,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.flags = CpuFlags::from_bits_truncate(new_flags);
     }
 
-    fn rol(&mut self, mode: &AddressingMode) {
+    pub (super) fn rol(&mut self, mode: &AddressingMode) {
         let carry = self.contains_flag(CpuFlags::CARRY) as u8;
         let address = self.get_address(mode);
 
@@ -404,7 +328,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         }
     }
 
-    fn ror(&mut self, mode: &AddressingMode) {
+    pub (super) fn ror(&mut self, mode: &AddressingMode) {
         let carry = (self.contains_flag(CpuFlags::CARRY) as u8) << 7;
         let address = self.get_address(mode);
 
@@ -424,7 +348,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         }
     }
 
-    fn rti(&mut self) {
+    pub (super) fn rti(&mut self) {
         let status = self.pop_stack();
         let pc_low = self.pop_stack() as u16;
         let pc_high = self.pop_stack() as u16;
@@ -436,81 +360,81 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.program_counter = (pc_high << 8) | pc_low;
     }
 
-    fn rts(&mut self) {
+    pub (super) fn rts(&mut self) {
         let pc_low = self.pop_stack() as u16;
         let pc_high = self.pop_stack() as u16;
 
         self.program_counter = ((pc_high << 8) | pc_low).wrapping_add(1);
     }
 
-    fn sbc(&mut self, mode: &AddressingMode) {
+    pub (super) fn sbc(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.sub_from_accumulator(value);
     }
 
-    fn sec(&mut self) {
+    pub (super) fn sec(&mut self) {
         self.insert_flag(CpuFlags::CARRY);
     }
 
-    fn sed(&mut self) {
+    pub (super) fn sed(&mut self) {
         self.insert_flag(CpuFlags::DECIMAL_MODE);
     }
 
-    fn sei(&mut self) {
+    pub (super) fn sei(&mut self) {
         self.insert_flag(CpuFlags::INTERRUPT_DISABLE);
     }
 
-    fn sta(&mut self, mode: &AddressingMode) {
+    pub (super) fn sta(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         self.mem_write(addr, self.register_a);
     }
 
-    fn stx(&mut self, mode: &AddressingMode) {
+    pub (super) fn stx(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         self.mem_write(addr, self.register_x);
     }
 
-    fn sty(&mut self, mode: &AddressingMode) {
+    pub (super) fn sty(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         self.mem_write(addr, self.register_y);
     }
 
-    fn tax(&mut self) {
+    pub (super) fn tax(&mut self) {
         self.register_x = self.register_a;
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn tay(&mut self) {
+    pub (super) fn tay(&mut self) {
         self.register_y = self.register_a;
         self.update_zero_and_negative_flags(self.register_y);
     }
 
-    fn tsx(&mut self) {
+    pub (super) fn tsx(&mut self) {
         self.register_x = self.stack_pointer;
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn txa(&mut self) {
+    pub (super) fn txa(&mut self) {
         self.register_a = self.register_x;
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn txs(&mut self) {
+    pub (super) fn txs(&mut self) {
         self.stack_pointer = self.register_x;
     }
 
-    fn tya(&mut self) {
+    pub (super) fn tya(&mut self) {
         self.register_a = self.register_y;
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn nop_with_operand(&mut self, mode: &AddressingMode) {
+    pub (super) fn nop_with_operand(&mut self, mode: &AddressingMode) {
         // the operand is read and discarded (the read can have side effects on real hardware)
         self.get_operand(mode);
     }
 
-    fn lax(&mut self, mode: &AddressingMode) {
+    pub (super) fn lax(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.register_a = value;
@@ -518,12 +442,12 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.update_zero_and_negative_flags(value);
     }
 
-    fn sax(&mut self, mode: &AddressingMode) {
+    pub (super) fn sax(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         self.mem_write(addr, self.register_a & self.register_x);
     }
 
-    fn dcp(&mut self, mode: &AddressingMode) {
+    pub (super) fn dcp(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr).wrapping_sub(1);
 
@@ -531,7 +455,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.compare(self.register_a, value);
     }
 
-    fn isb(&mut self, mode: &AddressingMode) {
+    pub (super) fn isb(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr).wrapping_add(1);
 
@@ -539,7 +463,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.sub_from_accumulator(value);
     }
 
-    fn slo(&mut self, mode: &AddressingMode) {
+    pub (super) fn slo(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr);
         let result = value << 1;
@@ -549,7 +473,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.set_register_a(self.register_a | result);
     }
 
-    fn rla(&mut self, mode: &AddressingMode) {
+    pub (super) fn rla(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr);
         let result = (value << 1) | self.get_flag_value(CpuFlags::CARRY) as u8;
@@ -559,7 +483,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.set_register_a(self.register_a & result);
     }
 
-    fn sre(&mut self, mode: &AddressingMode) {
+    pub (super) fn sre(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr);
         let result = value >> 1;
@@ -569,7 +493,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.set_register_a(self.register_a ^ result);
     }
 
-    fn rra(&mut self, mode: &AddressingMode) {
+    pub (super) fn rra(&mut self, mode: &AddressingMode) {
         let addr = self.get_address(mode);
         let value = self.mem_read(addr);
         let result = (value >> 1) | ((self.get_flag_value(CpuFlags::CARRY) as u8) << 7);
@@ -580,14 +504,14 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.add_to_accumulator(result);
     }
 
-    fn anc(&mut self, mode: &AddressingMode) {
+    pub (super) fn anc(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
 
         self.set_register_a(self.register_a & value);
         self.set_flag(CpuFlags::CARRY, self.register_a & 0x80 != 0);
     }
 
-    fn alr(&mut self, mode: &AddressingMode) {
+    pub (super) fn alr(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
         let anded = self.register_a & value;
 
@@ -595,7 +519,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.set_register_a(anded >> 1);
     }
 
-    fn arr(&mut self, mode: &AddressingMode) {
+    pub (super) fn arr(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
         let carry_in = (self.get_flag_value(CpuFlags::CARRY) as u8) << 7;
         let result = ((self.register_a & value) >> 1) | carry_in;
@@ -606,7 +530,7 @@ impl<'a> CpuInstructions for CPU<'a> {
         self.set_flag(CpuFlags::OVERFLOW, ((result >> 6) ^ (result >> 5)) & 0x01 != 0);
     }
 
-    fn axs(&mut self, mode: &AddressingMode) {
+    pub (super) fn axs(&mut self, mode: &AddressingMode) {
         let value = self.get_operand(mode);
         let anded = self.register_a & self.register_x;
 

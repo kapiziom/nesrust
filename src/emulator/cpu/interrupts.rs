@@ -1,8 +1,6 @@
 use bitflags::Flags;
 use crate::emulator::cpu::CPU;
-use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
-use crate::emulator::cpu::instructions::CpuInstructions;
-use crate::emulator::cpu::stack::StackOperations;
+use crate::emulator::cpu::flags::CpuFlags;
 
 #[derive(PartialEq, Eq)]
 pub enum InterruptType {
@@ -40,12 +38,8 @@ pub (super) const NMI: Interrupt = Interrupt {
     cpu_cycles: 8 // 2
 };
 
-pub trait CpuInterrupts {
-    fn handle_interrupt(&mut self, interrupt: Interrupt);
-}
-
-impl<'a> CpuInterrupts for CPU<'a> {
-    fn handle_interrupt(&mut self, interrupt: Interrupt) {
+impl<'a> CPU<'a> {
+    pub (super) fn handle_interrupt(&mut self, interrupt: Interrupt) {
         self.push_stack_u16(self.program_counter);
         let mut flag = self.flags.clone();
 

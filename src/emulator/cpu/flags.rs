@@ -30,48 +30,32 @@ bitflags::bitflags! {
 }
 
 
-pub trait FlagOperations {
-    fn get_status_register(&self) -> u8;
-
-    fn set_flag(&mut self, flag: CpuFlags, value: bool);
-
-    fn clear_flag(&mut self, flag: CpuFlags);
-
-    fn insert_flag(&mut self, flag: CpuFlags);
-
-    fn get_flag_value(&mut self, flag: CpuFlags) -> u16;
-
-    fn contains_flag(&mut self, flag: CpuFlags) -> bool;
-
-    fn update_zero_and_negative_flags(&mut self, result: u8);
-}
-
-impl<'a> FlagOperations for CPU<'a> {
-    fn get_status_register(&self) -> u8 {
+impl<'a> CPU<'a> {
+    pub (super) fn get_status_register(&self) -> u8 {
         self.flags.bits()
     }
 
-    fn set_flag(&mut self, flag: CpuFlags, value: bool) {
+    pub (super) fn set_flag(&mut self, flag: CpuFlags, value: bool) {
         self.flags.set(flag, value);
     }
 
-    fn clear_flag(&mut self, flag: CpuFlags) {
+    pub (super) fn clear_flag(&mut self, flag: CpuFlags) {
         self.flags.set(flag, false);
     }
 
-    fn insert_flag(&mut self, flag: CpuFlags) {
+    pub (super) fn insert_flag(&mut self, flag: CpuFlags) {
         self.flags.set(flag, true);
     }
 
-    fn get_flag_value(&mut self, flag: CpuFlags) -> u16 {
+    pub (super) fn get_flag_value(&mut self, flag: CpuFlags) -> u16 {
         if self.contains_flag(flag) { 1 } else { 0 }
     }
 
-    fn contains_flag(&mut self, flag: CpuFlags) -> bool {
+    pub (super) fn contains_flag(&mut self, flag: CpuFlags) -> bool {
         self.flags.contains(flag)
     }
 
-    fn update_zero_and_negative_flags(&mut self, result: u8) {
+    pub (super) fn update_zero_and_negative_flags(&mut self, result: u8) {
         self.set_flag(CpuFlags::ZERO, result == 0);
         self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
     }

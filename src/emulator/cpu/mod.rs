@@ -7,10 +7,8 @@ mod stack;
 
 use crate::emulator::bus::cpu_bus::CpuBus;
 pub use operation_codes::*;
-pub use addressing::*;
-use crate::emulator::cpu::flags::{CpuFlags, FlagOperations};
-use crate::emulator::cpu::instructions::{CpuInstructions};
-use crate::emulator::cpu::interrupts::{CpuInterrupts, Interrupt};
+use addressing::AddressingMode;
+use crate::emulator::cpu::flags::CpuFlags;
 
 pub struct CPU<'a> {
     pub (super) register_a: u8,
@@ -387,7 +385,6 @@ impl<'a> CPU<'a> {
 mod test {
     use super::*;
     use crate::emulator::bus::mock_bus::MockBus;
-    use crate::emulator::cpu::stack::StackOperations;
 
     fn prepare_test_cpu(program: &[u8]) -> CPU {
         let mut bus = MockBus::new();
