@@ -21,6 +21,11 @@ pub trait CpuBus {
     fn tick(&mut self, cycles: u8);
 
     fn fetch_nmi(&mut self) -> Option<u8>;
+
+    /// Level of the IRQ line (APU frame counter/DMC, mappers). Stays true until the source is acknowledged.
+    fn irq_pending(&self) -> bool {
+        false
+    }
 }
 
 

@@ -42,7 +42,7 @@ impl<'a> CPU<'a> {
             register_y: 0,
             stack_pointer: 0xfd,
             program_counter: 0,
-            flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::BREAK | CpuFlags::UNUSED,
+            flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::UNUSED,
             bus,
             cycles: 0,
         };
@@ -68,20 +68,29 @@ impl<'a> CPU<'a> {
         self.stack_pointer = state.sp;
     }
 
-    /// Executes a single instruction. Returns false when execution cannot continue
-    /// (BRK or an unknown opcode).
+    /// Services a pending interrupt or executes a single instruction.
+    /// Returns false when execution cannot continue (unknown opcode).
     pub fn step(&mut self) -> bool {
+        if self.poll_interrupts() {
+            return true;
+        }
+
         let operation_code = self.mem_read(self.program_counter);
         self.process_operation(operation_code)
     }
 
+    /// Runs until `program_end`, an unknown opcode, or a BRK (BRK is executed, then used as the end-of-program marker).
     pub fn interpret(&mut self, program_end: usize) {
         while (self.program_counter as usize) < program_end {
+            if self.poll_interrupts() {
+                continue;
+            }
+
             let operation_code = self.mem_read(self.program_counter);
 
             println!("interpret: op_code: {:#X}", operation_code);
 
-            if !self.process_operation(operation_code) {
+            if !self.process_operation(operation_code) || operation_code == 0x00 {
                 println!("Program end");
                 break
             }
@@ -91,6 +100,10 @@ impl<'a> CPU<'a> {
     // test with skip_brk to prevent read 0x00 (and pc++) in single instruction test
     pub fn interpret_for_test(&mut self, program_end: usize, skip_brk: bool) {
         while (self.program_counter as usize) <= program_end {
+            if self.poll_interrupts() {
+                continue;
+            }
+
             let operation_code = self.mem_read(self.program_counter);
 
             println!("interpret: op_code: {:#X}", operation_code);
@@ -100,7 +113,7 @@ impl<'a> CPU<'a> {
                 break;
             }
 
-            if !self.process_operation(operation_code) {
+            if !self.process_operation(operation_code) || operation_code == 0x00 {
                 println!("Program end");
                 break;
             }
@@ -108,10 +121,6 @@ impl<'a> CPU<'a> {
     }
 
     fn process_operation(&mut self, operation_code: u8) -> bool {
-        if let Some(_nmi) = self.bus.fetch_nmi() {
-            self.handle_interrupt(interrupts::NMI);
-        }
-
         self.program_counter += 1;
 
         let mut is_jump = false;
@@ -124,8 +133,10 @@ impl<'a> CPU<'a> {
             match operation_code {
                 // BRK - Force Interrupt
                 0x00 => {
+                    // BRK has a padding byte: the pushed return address is opcode + 2
+                    self.program_counter = self.program_counter.wrapping_add(1);
                     self.handle_interrupt(interrupts::BRK);
-                    return false;
+                    return true;
                 },
                 // ADC - Add with Carry
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71
@@ -474,10 +485,135 @@ mod test {
 
         assert_eq!(cpu.program_counter, 0x1234);
 
-        assert!(cpu.contains_flag(CpuFlags::BREAK));
         assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
+        assert!(!cpu.contains_flag(CpuFlags::BREAK), "B only exists in the pushed copy of the status");
 
         assert_eq!(cpu.stack_pointer, 0xFA);
+        assert_eq!(cpu.cycles, 7);
+
+        // pushed: return address = BRK + 2, status with B and bit 5 set
+        let status = cpu.pop_stack();
+        assert_eq!(status & 0b0011_0000, 0b0011_0000);
+        assert_eq!(cpu.pop_stack(), 0x02);
+        assert_eq!(cpu.pop_stack(), 0x80);
+    }
+
+    #[test]
+    fn test_brk_does_not_stop_step() {
+        let program = [0x00, 0xEA];
+        let mut cpu = prepare_test_cpu(&program);
+        cpu.mem_write(0xFFFE, 0x00);
+        cpu.mem_write(0xFFFF, 0x90);
+        cpu.mem_write(0x9000, 0xEA); // NOP at the handler
+
+        assert!(cpu.step());
+        assert_eq!(cpu.program_counter, 0x9000);
+
+        assert!(cpu.step());
+        assert_eq!(cpu.program_counter, 0x9001);
+    }
+
+    #[test]
+    fn test_initial_status_is_reset_state() {
+        let cpu = CPU::new(Box::new(MockBus::new()));
+
+        assert_eq!(cpu.state().p, 0x24);
+        assert_eq!(cpu.state().sp, 0xFD);
+    }
+
+    fn interrupt_test_cpu(configure: impl FnOnce(&mut MockBus)) -> CPU<'static> {
+        let mut bus = MockBus::new();
+        bus.load_program(&[0xEA, 0xEA], 0x8000); // NOP, NOP
+        bus.memory[0xFFFA] = 0x00; // NMI vector -> $9000
+        bus.memory[0xFFFB] = 0x90;
+        bus.memory[0xFFFE] = 0x00; // IRQ/BRK vector -> $A000
+        bus.memory[0xFFFF] = 0xA0;
+        configure(&mut bus);
+
+        let mut cpu = CPU::new(Box::new(bus));
+        cpu.program_counter = 0x8000;
+        cpu
+    }
+
+    #[test]
+    fn test_nmi_is_taken_before_the_next_opcode() {
+        let mut cpu = interrupt_test_cpu(|bus| bus.nmi_interrupt = Some(1));
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE); // NMI ignores the I flag anyway
+        cpu.insert_flag(CpuFlags::CARRY);
+
+        assert!(cpu.step());
+
+        assert_eq!(cpu.program_counter, 0x9000, "jumped through the NMI vector");
+        assert_eq!(cpu.cycles, 7);
+        assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
+
+        // the NOP at $8000 was not executed: return address is $8000 itself
+        let status = cpu.pop_stack();
+        assert_eq!(status & 0b0011_0000, 0b0010_0000, "NMI pushes B=0, bit 5=1");
+        assert_ne!(status & CpuFlags::CARRY.bits(), 0);
+        assert_eq!(cpu.pop_stack(), 0x00);
+        assert_eq!(cpu.pop_stack(), 0x80);
+    }
+
+    #[test]
+    fn test_nmi_is_edge_triggered() {
+        let mut cpu = interrupt_test_cpu(|bus| bus.nmi_interrupt = Some(1));
+
+        cpu.step(); // NMI
+        cpu.mem_write(0x9000, 0xEA);
+        cpu.step(); // NOP in the handler, no second NMI
+
+        assert_eq!(cpu.program_counter, 0x9001);
+    }
+
+    #[test]
+    fn test_irq_is_masked_by_interrupt_disable() {
+        let mut cpu = interrupt_test_cpu(|bus| bus.irq_line = true);
+        assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
+
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0x8001, "IRQ ignored, NOP executed");
+    }
+
+    #[test]
+    fn test_irq_is_taken_when_unmasked() {
+        let mut cpu = interrupt_test_cpu(|bus| bus.irq_line = true);
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0xA000);
+        assert_eq!(cpu.cycles, 7);
+        assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE), "handler runs with IRQs masked");
+        assert_eq!(cpu.pop_stack() & 0b0011_0000, 0b0010_0000, "IRQ pushes B=0, bit 5=1");
+    }
+
+    #[test]
+    fn test_nmi_has_priority_over_irq() {
+        let mut cpu = interrupt_test_cpu(|bus| { bus.nmi_interrupt = Some(1); bus.irq_line = true; });
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0x9000);
+    }
+
+    #[test]
+    fn test_rti_returns_from_nmi_and_restores_flags() {
+        let mut cpu = interrupt_test_cpu(|bus| {
+            bus.nmi_interrupt = Some(1);
+            bus.memory[0x9000] = 0x40; // RTI
+        });
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+        cpu.insert_flag(CpuFlags::CARRY);
+        let before = cpu.state();
+
+        cpu.step(); // NMI
+        cpu.step(); // RTI
+
+        assert_eq!(cpu.state(), before);
+        assert!(!cpu.contains_flag(CpuFlags::BREAK));
     }
 
     #[test]

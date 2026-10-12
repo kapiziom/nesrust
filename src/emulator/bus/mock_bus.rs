@@ -3,6 +3,7 @@ use crate::emulator::bus::cpu_bus::CpuBus;
 pub struct MockBus {
     pub memory: [u8; 0x10000],
     pub nmi_interrupt: Option<u8>,
+    pub irq_line: bool,
     pub cycles: usize,
 }
 
@@ -11,6 +12,7 @@ impl MockBus {
         Self {
             memory: [0; 0x10000],
             nmi_interrupt: None,
+            irq_line: false,
             cycles: 0
         }
     }
@@ -41,6 +43,10 @@ impl CpuBus for MockBus {
 
     fn fetch_nmi(&mut self) -> Option<u8> {
         self.nmi_interrupt.take()
+    }
+
+    fn irq_pending(&self) -> bool {
+        self.irq_line
     }
 }
 

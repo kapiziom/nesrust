@@ -17,7 +17,7 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 
 | Module | State |
 |---|---|
-| `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), interpreter-style, cycles ticked **after** each instruction (page-cross penalties included). **Passes nestest** (`tests/nestest.rs`, compares PC/A/X/Y/P/SP/CYC with the reference log). Remaining known bugs: see PLAN.md §1 (interrupts B/U flags, NMI ordering, BRK). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented. No IRQ line. |
+| `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), interpreter-style, cycles ticked **after** each instruction (page-cross penalties included). **Passes nestest** (`tests/nestest.rs`, compares PC/A/X/Y/P/SP/CYC with the reference log). NMI (edge), IRQ (level, via `CpuBus::irq_pending`, masked by I) and BRK are handled with correct B/U bits and return addresses. Remaining: RESET, CLI/SEI/PLP interrupt-poll delay, per-cycle accuracy (see PLAN.md §1). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented.  |
 | `bus/` | `CpuBus` trait (`read(&self)`, `write`, `tick`, `fetch_nmi`), real `Bus` (RAM+PPU+ROM), `MockBus` (flat 64KB for CPU tests). APU/controller registers `panic!`. |
 | `rom/` | iNES parser (no NES 2.0, no bounds checks), mapper logic hard-coded as `match` (only NROM). PPU cannot access CHR yet. |
 | `ppu/` | Stub: timing counters + NMI flag only. Registers are **not** implemented. |
