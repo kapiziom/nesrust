@@ -61,10 +61,10 @@ impl CpuBus for Bus {
                 // TODO: Implement APU register reading
                 self.last_bus_value
             }
-            // Controller registers: only the low bits are driven, the rest is open bus
+            // Controller registers: the data is on bit 0, the upper bits are not driven (open bus, usually $40)
             0x4016..=0x4017 => {
-                // TODO: Implement controller reading
-                self.last_bus_value & 0xE0
+                let port = (addr & 1) as usize;
+                (self.last_bus_value & 0xE0) | self.controllers[port].read()
             }
             // Cartridge: expansion area, PRG-RAM and PRG-ROM; nothing driving the bus means open bus
             0x4020..=0xFFFF => {
@@ -98,10 +98,14 @@ impl CpuBus for Bus {
             0x4000..=0x4015 => {
                 // TODO: Implement APU register writing
             }
-            // Controller registers
-            0x4016..=0x4017 => {
-                // TODO: Implement controller writing
+            // Controller strobe: bit 0 is shared by both ports
+            0x4016 => {
+                for controller in &mut self.controllers {
+                    controller.write_strobe(data & 1 != 0);
+                }
             }
+            // $4017 writes belong to the APU frame counter
+            0x4017 => {}
             // Cartridge: expansion area, PRG-RAM and mapper registers
             0x4020..=0xFFFF => {
                 self.cartridge.cpu_write(addr, data)

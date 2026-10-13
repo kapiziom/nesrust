@@ -22,7 +22,8 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 | `cartridge/` | `ines.rs`: iNES + NES 2.0 parser (`Result`, never panics). `mapper/`: `trait Mapper` + NROM(0), MMC1(1), UxROM(2), CNROM(3), MMC3(4), AxROM(7); mapper-controlled mirroring, PRG-RAM/battery RAM, CHR-RAM, IRQ line. `Cartridge` wraps a boxed mapper. The PPU reads CHR through `Cartridge::ppu_read` and mirroring through `mirroring()`. |
 | `ppu/` | Dot-by-dot 2C02: registers, VRAM/palette, loopy scrolling, background + sprite pipelines, sprite 0 hit/overflow, NMI/vblank timing, RGBA framebuffer + palette-index buffer. `sprites.rs`, `palette.rs`. Evaluation of sprites happens at dot 257 (not per dot); no open-bus decay. |
 | `apu/` | Empty. |
-| `nes.rs` | `Nes` facade: CPU + bus; `new` (runs reset), `reset`, `run_frame`, `framebuffer`. Entry point for frontends and test runners. |
+| `controller.rs` | Standard controller (`Controller`, `Buttons`): strobe latch, 8-bit shift register, ones after the 8th read. Bus routes `$4016` (strobe, shared) and `$4016`/`$4017` reads; open-bus upper bits. No Zapper / Four Score. |
+| `nes.rs` | `Nes` facade: CPU + bus; `new` (runs reset), `reset`, `run_frame`, `framebuffer`, `set_buttons(port, Buttons)`. Entry point for frontends and test runners. |
 | `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` (instruction tracing via `RUST_LOG=trace` once a logger is set up; none is yet). The runner does not display anything yet; there is no APU or controller input. |
 
 ## Commands

@@ -1,5 +1,6 @@
 use crate::emulator::bus::Bus;
 use crate::emulator::cartridge::Cartridge;
+use crate::emulator::controller::Buttons;
 use crate::emulator::cpu::CPU;
 
 /// The whole console: a CPU wired to the bus (RAM, PPU, cartridge).
@@ -30,6 +31,11 @@ impl Nes {
                 return true;
             }
         }
+    }
+
+    /// Sets the buttons held on controller `port` (0 = $4016, 1 = $4017); they stay held until changed.
+    pub fn set_buttons(&mut self, port: usize, buttons: Buttons) {
+        self.cpu.bus.set_buttons(port, buttons);
     }
 
     /// RGBA, 256x240.

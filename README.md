@@ -17,6 +17,9 @@
 ### Bus
 - A **bus** connecting the CPU, RAM, PPU and cartridge, with open-bus behaviour for unmapped addresses.
 
+### Input
+- Two standard controllers (`$4016`/`$4017`): strobe/latch/shift register, open-bus upper bits; `Nes::set_buttons(port, Buttons)`.
+
 ### PPU
 - Dot-accurate **2C02**: registers, scrolling, background and sprites (8x8/8x16, sprite 0 hit, overflow), NMI/VBL timing,
   RGBA framebuffer. Passes Blargg's `ppu_vbl_nmi` and `sprite_hit_tests`; 67 of 81 bundled Blargg ROMs pass in total
@@ -26,7 +29,6 @@
 ## 🛠️ To-Do Features
 
 - **APU**: sound
-- **Controllers**
 - More mappers, save states, frontend
 
 ## 📂 Project Structure

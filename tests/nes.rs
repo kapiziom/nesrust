@@ -1,6 +1,7 @@
 //! Whole-console tests with tiny hand-assembled programs: bus routing, NMI delivery, OAM DMA, frame pacing.
 
 use nesrs::emulator::cartridge::Cartridge;
+use nesrs::emulator::controller::Buttons;
 use nesrs::emulator::nes::Nes;
 
 /// Builds an NROM-128 cartridge whose PRG starts at $8000 with `program` and the given interrupt vectors.
@@ -173,4 +174,86 @@ fn run_frame_reports_a_stopped_cpu() {
     let mut nes = nes_with(&[0x02], 0x8000, 0x8000);
 
     assert!(!nes.run_frame());
+}
+
+/// The usual way games read a controller: strobe, then eight reads of `port_address` stored in $00-$07
+/// (the raw value, upper bits included), then loop forever.
+fn controller_reader(port_address: u16) -> Nes {
+    let [low, high] = port_address.to_le_bytes();
+    #[rustfmt::skip]
+    let program = [
+        0xA9, 0x01,                 // $8000 LDA #$01
+        0x8D, 0x16, 0x40,           // $8002 STA $4016   strobe high
+        0xA9, 0x00,                 // $8005 LDA #$00
+        0x8D, 0x16, 0x40,           // $8007 STA $4016   strobe low: latch
+        0xA2, 0x00,                 // $800A LDX #$00
+        0xAD, low, high,            // $800C LDA port    <- loop
+        0x95, 0x00,                 // $800F STA $00,X
+        0xE8,                       // $8011 INX
+        0xE0, 0x08,                 // $8012 CPX #$08
+        0xD0, 0xF6,                 // $8014 BNE $800C
+        0x4C, 0x16, 0x80,           // $8016 JMP $8016
+    ];
+    nes_with(&program, 0x8000, 0x8000)
+}
+
+fn bytes_read_by_the_program(nes: &mut Nes) -> Vec<u8> {
+    nes.run_frame();
+    (0..8u16).map(|offset| nes.cpu.peek(offset)).collect()
+}
+
+#[test]
+fn a_program_reads_controller_1_through_4016() {
+    let mut nes = controller_reader(0x4016);
+    nes.set_buttons(0, Buttons::A | Buttons::SELECT | Buttons::LEFT);
+
+    let read = bytes_read_by_the_program(&mut nes);
+
+    // data on bit 0; the upper bits are open bus: the high byte of the address ($40) was the last thing on the bus
+    assert_eq!(read, [0x41, 0x40, 0x41, 0x40, 0x40, 0x40, 0x41, 0x40]);
+}
+
+#[test]
+fn controller_2_is_read_through_4017_and_is_independent() {
+    let mut nes = controller_reader(0x4017);
+    nes.set_buttons(0, Buttons::A);
+    nes.set_buttons(1, Buttons::B | Buttons::RIGHT);
+
+    let read = bytes_read_by_the_program(&mut nes);
+
+    assert_eq!(read, [0x40, 0x41, 0x40, 0x40, 0x40, 0x40, 0x40, 0x41]);
+}
+
+#[test]
+fn unpressed_buttons_read_as_open_bus_only() {
+    let mut nes = controller_reader(0x4016);
+
+    assert_eq!(bytes_read_by_the_program(&mut nes), [0x40; 8]);
+}
+
+#[test]
+fn the_strobe_write_latches_both_ports_and_changes_are_seen_on_the_next_strobe() {
+    let mut nes = nes_with(&[0x4C, 0x00, 0x80], 0x8000, 0x8000);
+    nes.set_buttons(0, Buttons::UP);
+    nes.set_buttons(1, Buttons::DOWN);
+
+    nes.cpu.poke(0x4016, 1);
+    nes.cpu.poke(0x4016, 0);
+    nes.set_buttons(0, Buttons::empty()); // released after the latch: still reported as pressed
+
+    let first_port: Vec<u8> = (0..8).map(|_| nes.cpu.peek(0x4016) & 1).collect();
+    let second_port: Vec<u8> = (0..8).map(|_| nes.cpu.peek(0x4017) & 1).collect();
+
+    assert_eq!(first_port, [0, 0, 0, 0, 1, 0, 0, 0]);
+    assert_eq!(second_port, [0, 0, 0, 0, 0, 1, 0, 0]);
+    assert_eq!(nes.cpu.peek(0x4016) & 1, 1, "official controllers return 1 after the 8th read");
+}
+
+#[test]
+fn setting_buttons_on_a_missing_port_is_ignored() {
+    let mut nes = nes_with(&[0xEA], 0x8000, 0x8000);
+
+    nes.set_buttons(2, Buttons::A); // there are only two ports
+
+    assert_eq!(nes.cpu.peek(0x4016) & 1, 0);
 }

@@ -3,6 +3,7 @@ pub mod mock_bus;
 
 use crate::emulator::ppu::PPU;
 use crate::emulator::cartridge::Cartridge;
+use crate::emulator::controller::{Buttons, Controller};
 use crate::emulator::ram::RAM;
 
 pub struct Bus {
@@ -16,6 +17,8 @@ pub struct Bus {
     /// Source page of a pending $4014 OAM DMA; the CPU picks it up after the write instruction.
     oam_dma: Option<u8>,
     frame_complete: bool,
+    /// Controller ports 1 ($4016) and 2 ($4017).
+    controllers: [Controller; 2],
     // todo
     // apu: APU,
 }
@@ -31,6 +34,14 @@ impl Bus {
             last_bus_value: 0,
             oam_dma: None,
             frame_complete: false,
+            controllers: [Controller::new(), Controller::new()],
+        }
+    }
+
+    /// Sets the buttons held on controller `port` (0 or 1). Out-of-range ports are ignored.
+    pub fn set_buttons(&mut self, port: usize, buttons: Buttons) {
+        if let Some(controller) = self.controllers.get_mut(port) {
+            controller.set_buttons(buttons);
         }
     }
 
