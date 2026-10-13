@@ -38,6 +38,14 @@ pub trait CpuBus {
         false
     }
 
+    /// Address of a sample byte the APU's DMC is waiting for. The CPU performs the read (stalling for a few cycles)
+    /// and hands the byte back through `dmc_dma_done`.
+    fn take_dmc_dma(&mut self) -> Option<u16> {
+        None
+    }
+
+    fn dmc_dma_done(&mut self, _value: u8) {}
+
     /// Source page of an OAM DMA started by a write to $4014, if one is waiting to be run (taking it clears it).
     fn take_oam_dma(&mut self) -> Option<u8> {
         None
@@ -56,9 +64,12 @@ impl CpuBus for Bus {
             0x2000..=0x3FFF => {
                 self.ppu.read_register(addr & 0x7, &mut self.cartridge)
             }
-            // APU & I/O registers
-            0x4000..=0x4015 => {
-                // TODO: Implement APU register reading
+            // APU status. Bit 5 is open bus, and reading it does not disturb the CPU's data bus latch.
+            0x4015 => {
+                return (self.apu.read_status() & !0x20) | (self.last_bus_value & 0x20);
+            }
+            // other APU registers are write-only
+            0x4000..=0x4014 => {
                 self.last_bus_value
             }
             // Controller registers: the data is on bit 0, the upper bits are not driven (open bus, usually $40)
@@ -94,9 +105,9 @@ impl CpuBus for Bus {
             0x4014 => {
                 self.oam_dma = Some(data);
             }
-            // APU & I/O registers
-            0x4000..=0x4015 => {
-                // TODO: Implement APU register writing
+            // APU registers
+            0x4000..=0x4013 | 0x4015 => {
+                self.apu.write_register(addr, data);
             }
             // Controller strobe: bit 0 is shared by both ports
             0x4016 => {
@@ -104,8 +115,10 @@ impl CpuBus for Bus {
                     controller.write_strobe(data & 1 != 0);
                 }
             }
-            // $4017 writes belong to the APU frame counter
-            0x4017 => {}
+            // $4017 writes go to the APU frame counter
+            0x4017 => {
+                self.apu.write_register(addr, data);
+            }
             // Cartridge: expansion area, PRG-RAM and mapper registers
             0x4020..=0xFFFF => {
                 self.cartridge.cpu_write(addr, data)
@@ -122,8 +135,8 @@ impl CpuBus for Bus {
         self.start_cycle(if write { Bus::WRITE_DOTS_BEFORE } else { Bus::READ_DOTS_BEFORE });
     }
 
-    fn tick_after_access(&mut self, write: bool) {
-        self.end_cycle(3 - if write { Bus::WRITE_DOTS_BEFORE } else { Bus::READ_DOTS_BEFORE });
+    fn tick_after_access(&mut self, _write: bool) {
+        self.end_cycle();
     }
 
     fn fetch_nmi(&mut self) -> Option<u8> {
@@ -131,7 +144,15 @@ impl CpuBus for Bus {
     }
 
     fn irq_pending(&self) -> bool {
-        self.cartridge.irq_pending()
+        self.cartridge.irq_pending() || self.apu.irq_pending()
+    }
+
+    fn take_dmc_dma(&mut self) -> Option<u16> {
+        self.apu.take_dmc_dma_request()
+    }
+
+    fn dmc_dma_done(&mut self, value: u8) {
+        self.apu.load_dmc_sample_byte(value);
     }
 
     fn take_oam_dma(&mut self) -> Option<u8> {

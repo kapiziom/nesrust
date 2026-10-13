@@ -321,8 +321,16 @@ impl<B: CpuBus> CPU<B> {
         self.end_cycle();
     }
 
-    /// Bus read; costs one CPU cycle.
+    /// Bus read; costs one CPU cycle. If the DMC is waiting for a sample byte the CPU is halted first.
     pub (super) fn read(&mut self, address: u16) -> u8 {
+        if let Some(sample_address) = self.bus.take_dmc_dma() {
+            self.run_dmc_dma(address, sample_address);
+        }
+
+        self.read_cycle(address)
+    }
+
+    fn read_cycle(&mut self, address: u16) -> u8 {
         self.cycles += 1;
         self.bus.tick_before_access(false);
         let value = self.bus.read(address);
@@ -338,6 +346,30 @@ impl<B: CpuBus> CPU<B> {
         self.bus.write(address, data);
         self.bus.tick_after_access(true);
         self.end_cycle();
+    }
+
+    /// The DMC fetches a sample byte: the CPU is halted on its read, which it repeats (with the side effects of
+    /// reading e.g. $4016 or $2002), then idles one more cycle for alignment before the sample read. 4 cycles.
+    /// https://www.nesdev.org/wiki/DMA#DMC_DMA
+    fn run_dmc_dma(&mut self, cpu_address: u16, sample_address: u16) {
+        // The halted CPU keeps re-reading its address, which repeats the side effects of $2002/$2007 reads. Reads of
+        // the controller ports and $4015 are one continuous access, so only the first of them counts.
+        let repeats_are_visible = !(0x4015..=0x4017).contains(&cpu_address);
+        let repeat = |cpu: &mut Self| {
+            if repeats_are_visible {
+                cpu.read_cycle(cpu_address);
+            } else {
+                cpu.tick();
+            }
+        };
+
+        self.read_cycle(cpu_address); // halt cycle
+        repeat(self); // dummy cycle
+        if self.cycles & 1 == 0 {
+            repeat(self); // alignment: the sample is read on a "get" cycle
+        }
+        let byte = self.read_cycle(sample_address);
+        self.bus.dmc_dma_done(byte);
     }
 
     /// Samples the interrupt lines at the end of a cycle.
