@@ -4,3 +4,4 @@ pub mod ppu;
 pub mod apu;
 pub mod ram;
 pub mod cartridge;
+pub mod nes;
