@@ -3,3 +3,7 @@
 .plans
 .claude\settings.local.json
 test_rom/blargg/
+
+*.sav
+/*.png
+.games

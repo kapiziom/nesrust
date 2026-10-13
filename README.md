@@ -38,7 +38,17 @@
 - **`src/emulator/cartridge/`**: iNES parser and the `Mapper` trait with its implementations.
 - **`src/emulator/ppu/`, `apu/`, `ram/`, `nes.rs`**: PPU, APU (empty), 2KB RAM, the `Nes` console facade.
 - **`tests/`**: integration tests (nestest, Blargg ROMs, whole-console programs, cartridge loading); reference ROMs live in `test_rom/`.
-- **`src/main.rs`**: throw-away runner (`cargo run -- <rom.nes>`).
+- **`examples/viewer.rs`**: a minimal window to try ROMs by hand (see below).
+
+## 🎮 Trying a ROM
+
+```
+cargo run --release --example viewer -- path/to/game.nes
+```
+
+Arrows = D-pad, X = A, Z = B, Enter = Start, Right Shift / Backspace = Select, P = pause, R = reset,
+Tab (hold) = 4x speed, F12 = screenshot (PNG), Esc = quit. Battery RAM is stored in `<rom>.sav`. There is no audio yet.
+For a headless screenshot: `... -- game.nes --screenshot out.png --frames 120 --press start`.
 
 ## 🧪 Tests
 

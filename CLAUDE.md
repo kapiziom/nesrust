@@ -13,7 +13,7 @@ Guidance for AI agents working in this repository.
 
 ## Current state (keep this section up to date)
 
-Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
+Single library crate `nesrs` (plus `examples/viewer.rs`). Module layout under `src/emulator/`:
 
 | Module | State |
 |---|---|
@@ -24,7 +24,7 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 | `apu/` | Empty. |
 | `controller.rs` | Standard controller (`Controller`, `Buttons`): strobe latch, 8-bit shift register, ones after the 8th read. Bus routes `$4016` (strobe, shared) and `$4016`/`$4017` reads; open-bus upper bits. No Zapper / Four Score. |
 | `nes.rs` | `Nes` facade: CPU + bus; `new` (runs reset), `reset`, `run_frame`, `framebuffer`, `set_buttons(port, Buttons)`. Entry point for frontends and test runners. |
-| `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` (instruction tracing via `RUST_LOG=trace` once a logger is set up; none is yet). The runner does not display anything yet; there is no APU or controller input. |
+| `examples/viewer.rs` | Minimal windowed viewer for manual testing (minifb, a dev-dependency so the library stays I/O-free): keyboard input, pause/reset/4x speed, PNG screenshots (also headless: `--screenshot out.png --frames N --press start`), `.sav` battery files. No audio. |
 
 ## Commands
 
@@ -36,7 +36,7 @@ cargo test cpu::              # a subset by path
 cargo clippy --all-targets    # lint; new code should not add warnings
 cargo fmt                     # format (rustfmt defaults)
 cargo clean                   # run when target/ grows to several GB (check with: du -sh target); next build is a full rebuild
-cargo run --release           # run the demo binary
+cargo run --release --example viewer -- game.nes   # play / inspect a ROM in a window
 ```
 
 ## Conventions
