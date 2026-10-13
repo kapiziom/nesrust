@@ -1,40 +1,40 @@
 # nesrust: NES Emulator in Rust 🎮
 
-**NESRust** is a simple Nintendo Entertainment System (NES) emulator written in Rust, focusing on modularity and code clarity.
+**NESRust** is a Nintendo Entertainment System (NES) emulator written in Rust, focusing on modularity, accuracy and code clarity.
 
 ## 🚀 Features Implemented
 
 ### CPU
-- **6502 CPU Implementation**
-  - Support for **official opcodes**.
-  - Handles instructions, following the original 6502 specification.
-  - Stack operations and branching logic are implemented.
+- **6502 CPU** (official and the stable unofficial opcodes), cycle-accurate: every bus access, including dummy reads/writes, is one CPU cycle.
+- NMI, IRQ, BRK and RESET with correct stack/flag behaviour.
+- Passes **nestest** instruction by instruction, including cycle counts (`cargo test --test nestest`).
 
-### ROM Loading
-- **iNES ROM Support**
-  - Parsing of ROM headers to load PRG and CHR data.
-  - Support for **Mapper 0 (NROM)**.
+### Cartridge
+- **iNES and NES 2.0** parsing (malformed files return errors, never panic).
+- Mappers: **0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM)**.
+- PRG-RAM, CHR-RAM, battery-backed RAM access for saves, mapper-controlled mirroring and IRQ.
 
 ### Bus
-- A **bus** system that connects the CPU, RAM, ROM.
+- A **bus** connecting the CPU, RAM, PPU and cartridge, with open-bus behaviour for unmapped addresses.
 
 ## 🛠️ To-Do Features
 
-### PPU (Picture Processing Unit)
-- Implement graphics rendering
-
-### APU (Audio Processing Unit)
-- Implement sound support
-
-### Advanced Mapper Support
-- Extend support for additional mappers
-
-### Controller Support
-- Implement controller support
+- **PPU**: registers, rendering, scrolling, sprites (currently a stub)
+- **APU**: sound
+- **Controllers**
+- More mappers, save states, frontend
 
 ## 📂 Project Structure
 
-- **`src/emulator/cpu.rs`**: Implements the MOS 6502 CPU, including opcodes and instruction handling.
-- **`src/emulator/bus.rs`**: The bus system that connects CPU, memory, and ROM.
-- **`src/emulator/rom.rs`**: Handles loading and parsing of NES ROM files.
-- **`src/main.rs`**: The main entry point for the emulator.
+- **`src/emulator/cpu/`**: MOS 6502 core (`operation_codes.rs` opcode table, `addressing.rs`, `instructions.rs`, `interrupts.rs`).
+- **`src/emulator/bus/`**: `CpuBus` trait, the real `Bus`, and `MockBus` for tests.
+- **`src/emulator/cartridge/`**: iNES parser and the `Mapper` trait with its implementations.
+- **`src/emulator/ppu/`, `apu/`, `ram/`**: PPU (stub), APU (empty), 2KB RAM.
+- **`tests/`**: integration tests (nestest, cartridge loading); reference ROMs live in `test_rom/`.
+- **`src/main.rs`**: throw-away runner (`cargo run -- <rom.nes>`).
+
+## 🧪 Tests
+
+```
+cargo test
+```

@@ -6,7 +6,7 @@ use std::fs;
 
 use nesrs::emulator::bus::mock_bus::MockBus;
 use nesrs::emulator::cpu::{CpuState, CPU};
-use nesrs::emulator::rom::ROM;
+use nesrs::emulator::cartridge::INesFile;
 
 const ROM_PATH: &str = "test_rom/nestest.nes";
 const LOG_PATH: &str = "test_rom/nestest.log";
@@ -50,7 +50,7 @@ fn parse_log_line(line: &str) -> Expected {
 
 #[test]
 fn nestest_matches_reference_log() {
-    let rom = ROM::from_nes_file(&fs::read(ROM_PATH).expect("missing test_rom/nestest.nes"))
+    let rom = INesFile::parse(&fs::read(ROM_PATH).expect("missing test_rom/nestest.nes"))
         .expect("nestest.nes should parse");
     assert_eq!(rom.prg_rom.len(), 16384, "nestest is a single 16KB PRG bank (NROM-128)");
 

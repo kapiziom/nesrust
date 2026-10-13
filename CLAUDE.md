@@ -18,8 +18,8 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 | Module | State |
 |---|---|
 | `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), `CPU<B: CpuBus>` with static dispatch; **every bus access is one CPU cycle** (`CPU::read/write` tick the bus; dummy reads/writes included), opcode table is a `const` array, dispatch is by `Mnemonic`. **Passes nestest** (`tests/nestest.rs`, compares PC/A/X/Y/P/SP/CYC with the reference log). NMI (edge), IRQ (level, via `CpuBus::irq_pending`, masked by I) and BRK are handled with correct B/U bits and return addresses. `reset()` implemented. Remaining: CLI/SEI/PLP interrupt-poll delay, exact poll timing, SingleStepTests (see PLAN.md). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented.  |
-| `bus/` | `CpuBus` trait (`read(&mut self)`, `write`, `tick`, `fetch_nmi`, `irq_pending`), real `Bus` (RAM+PPU+ROM, open-bus value for unmapped reads), `MockBus` (flat 64KB for CPU tests). APU/controller registers are stubs. |
-| `rom/` | iNES parser (no NES 2.0, no bounds checks), mapper logic hard-coded as `match` (only NROM). PPU cannot access CHR yet. |
+| `bus/` | `CpuBus` trait (`read(&mut self)`, `write`, `tick`, `fetch_nmi`, `irq_pending`), real `Bus` (RAM+PPU+cartridge, open-bus value for unmapped reads), `MockBus` (flat 64KB for CPU tests). APU/controller registers are stubs. |
+| `cartridge/` | `ines.rs`: iNES + NES 2.0 parser (`Result`, never panics). `mapper/`: `trait Mapper` + NROM(0), MMC1(1), UxROM(2), CNROM(3), MMC3(4), AxROM(7); mapper-controlled mirroring, PRG-RAM/battery RAM, CHR-RAM, IRQ line. `Cartridge` wraps a boxed mapper. PPU does not use it yet (PPU is still a stub). |
 | `ppu/` | Stub: timing counters + NMI flag only. Registers are **not** implemented. |
 | `apu/` | Empty. |
 | `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` (instruction tracing via `RUST_LOG=trace` once a logger is set up; none is yet). Real ROMs will not get far: PPU and APU are stubs. |

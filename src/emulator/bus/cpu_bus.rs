@@ -51,17 +51,9 @@ impl CpuBus for Bus {
                 // TODO: Implement controller reading
                 self.last_bus_value & 0xE0
             }
-            // Expansion ROM
-            0x4020..=0x5FFF => {
-                self.rom.read_expansion(addr)
-            }
-            // SRAM
-            0x6000..=0x7FFF => {
-                self.rom.read_sram(addr)
-            }
-            // PRG ROM
-            0x8000..=0xFFFF => {
-                self.rom.read_prg(addr)
+            // Cartridge: expansion area, PRG-RAM and PRG-ROM; nothing driving the bus means open bus
+            0x4020..=0xFFFF => {
+                self.cartridge.cpu_read(addr).unwrap_or(self.last_bus_value)
             }
             // $4018-$401F: disabled test registers
             _ => self.last_bus_value
@@ -91,17 +83,9 @@ impl CpuBus for Bus {
             0x4016..=0x4017 => {
                 // TODO: Implement controller writing
             }
-            // Expansion ROM
-            0x4020..=0x5FFF => {
-                self.rom.write_expansion(addr, data)
-            }
-            // SRAM
-            0x6000..=0x7FFF => {
-                self.rom.write_sram(addr, data)
-            }
-            // PRG ROM (mapper-dependent)
-            0x8000..=0xFFFF => {
-                self.rom.write_prg(addr, data)
+            // Cartridge: expansion area, PRG-RAM and mapper registers
+            0x4020..=0xFFFF => {
+                self.cartridge.cpu_write(addr, data)
             }
             _ => {}
         }
@@ -113,5 +97,9 @@ impl CpuBus for Bus {
 
     fn fetch_nmi(&mut self) -> Option<u8> {
         self.nmi_interrupt.take()
+    }
+
+    fn irq_pending(&self) -> bool {
+        self.cartridge.irq_pending()
     }
 }
