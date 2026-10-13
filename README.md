@@ -20,15 +20,21 @@
 ### Input
 - Two standard controllers (`$4016`/`$4017`): strobe/latch/shift register, open-bus upper bits; `Nes::set_buttons(port, Buttons)`.
 
+### APU
+- All five channels (2 pulse, triangle, noise, DMC), frame counter with IRQ, nonlinear mixer and output filters.
+  Passes Blargg's `apu_test` and `blargg_apu_2005` suites and the DMC DMA tests.
+
+### Regions
+- **NTSC and PAL** timing, chosen from the cartridge header (60.1 / 50.0 frames per second).
+
 ### PPU
 - Dot-accurate **2C02**: registers, scrolling, background and sprites (8x8/8x16, sprite 0 hit, overflow), NMI/VBL timing,
-  RGBA framebuffer. Passes Blargg's `ppu_vbl_nmi` and `sprite_hit_tests`; 67 of 81 bundled Blargg ROMs pass in total
+  RGBA framebuffer. Passes Blargg's `ppu_vbl_nmi` and `sprite_hit_tests`; 110 of 121 judged Blargg ROMs pass in total
   (`cargo test --test blargg -- --nocapture`).
 - OAM DMA, `Nes::run_frame()` / `framebuffer()` as the entry point for a frontend.
 
 ## 🛠️ To-Do Features
 
-- **APU**: sound
 - More mappers, save states, frontend
 
 ## 📂 Project Structure
@@ -47,7 +53,7 @@ cargo run --release --example viewer -- path/to/game.nes
 ```
 
 Arrows = D-pad, X = A, Z = B, Enter = Start, Right Shift / Backspace = Select, P = pause, R = reset,
-Tab (hold) = 4x speed, F12 = screenshot (PNG), Esc = quit. Battery RAM is stored in `<rom>.sav`. There is no audio yet.
+Tab (hold) = 4x speed, F12 = screenshot (PNG), Esc = quit. Battery RAM is stored in `<rom>.sav`. There is sound; the audio buffer paces the emulation.
 For a headless screenshot: `... -- game.nes --screenshot out.png --frames 120 --press start`.
 
 ## 🧪 Tests
@@ -68,7 +74,8 @@ download it once to run the PPU/CPU/mapper ROM tests (without it `tests/blargg.r
 ```
 git clone --depth 1 https://github.com/christopherpow/nes-test-roms.git ../nes-test-roms
 mkdir -p test_rom/blargg
-for d in blargg_ppu_tests_2005.09.15b branch_timing_tests cpu_dummy_reads cpu_dummy_writes cpu_interrupts_v2          cpu_timing_test6 instr_misc instr_test-v5 instr_timing mmc3_test mmc3_test_2 oam_read oam_stress          ppu_open_bus ppu_read_buffer ppu_vbl_nmi sprite_hit_tests_2005.10.05 sprite_overflow_tests; do
+for d in blargg_ppu_tests_2005.09.15b branch_timing_tests cpu_dummy_reads cpu_dummy_writes cpu_interrupts_v2          cpu_timing_test6 instr_misc instr_test-v5 instr_timing mmc3_test mmc3_test_2 oam_read oam_stress          ppu_open_bus ppu_read_buffer ppu_vbl_nmi sprite_hit_tests_2005.10.05 sprite_overflow_tests \
+         apu_test blargg_apu_2005.07.30 apu_reset cpu_reset dmc_dma_during_read4 sprdma_and_dmc_dma vbl_nmi_timing; do
   cp -r ../nes-test-roms/$d test_rom/blargg/
 done
 ```
