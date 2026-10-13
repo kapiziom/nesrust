@@ -19,18 +19,66 @@ use nesrs::emulator::nes::Nes;
 const ROM_DIR: &str = "test_rom/blargg";
 const MAX_FRAMES: usize = 2400; // 40 seconds of console time (ROMs that report early stop sooner)
 
-/// Combined multi-test ROMs; the single-test ROMs in rom_singles/ cover the same ground with clearer results.
+/// ROMs that cannot be judged automatically, and combined multi-test ROMs (the single-test ROMs in rom_singles/
+/// cover the same ground with clearer results).
 const SKIPPED: &[&str] = &[
+    // report only through sound / an unusual on-screen format, or need a person pressing buttons
+    "dmc_tests/buffer_retained.nes",
+    "dmc_tests/latency.nes",
+    "dmc_tests/status.nes",
+    "dmc_tests/status_irq.nes",
+    "read_joy3/count_errors.nes",
+    "read_joy3/count_errors_fast.nes",
+    "read_joy3/thorough_test.nes",
+    "ppu_read_buffer/test_ppu_read_buffer.nes",
+    // combined ROMs
     "ppu_vbl_nmi/ppu_vbl_nmi.nes",
     "instr_test-v5/all_instrs.nes",
     "instr_test-v5/official_only.nes",
     "cpu_interrupts_v2/cpu_interrupts.nes",
     "instr_misc/instr_misc.nes",
     "instr_timing/instr_timing.nes",
+    "apu_test/apu_test.nes",
 ];
+
+/// Some ROMs print a checksum of their output instead of "Passed" when it differs from the one they were built
+/// with, although their documentation lists other correct outcomes (they depend on the CPU-PPU alignment at power-on).
+/// `(ROM path suffix, accepted checksums)`.
+const ALTERNATE_CORRECT_RESULTS: &[(&str, &[&str])] = &[("dma_2007_read.nes", &["159A7A8F", "5E3DF9C4"])];
+
+fn is_alternate_correct_result(path: &Path, screen: &str) -> bool {
+    ALTERNATE_CORRECT_RESULTS
+        .iter()
+        .any(|(suffix, checksums)| path.to_string_lossy().ends_with(suffix) && checksums.iter().any(|crc| screen.contains(crc)))
+}
 
 /// ROMs (path relative to ROM_DIR) that currently pass and must keep passing.
 const MUST_PASS: &[&str] = &[
+    "apu_reset/4015_cleared.nes",
+    "apu_reset/4017_timing.nes",
+    "apu_reset/4017_written.nes",
+    "apu_reset/irq_flag_cleared.nes",
+    "apu_reset/len_ctrs_enabled.nes",
+    "apu_reset/works_immediately.nes",
+    "apu_test/rom_singles/1-len_ctr.nes",
+    "apu_test/rom_singles/2-len_table.nes",
+    "apu_test/rom_singles/3-irq_flag.nes",
+    "apu_test/rom_singles/4-jitter.nes",
+    "apu_test/rom_singles/5-len_timing.nes",
+    "apu_test/rom_singles/6-irq_flag_timing.nes",
+    "apu_test/rom_singles/7-dmc_basics.nes",
+    "apu_test/rom_singles/8-dmc_rates.nes",
+    "blargg_apu_2005.07.30/01.len_ctr.nes",
+    "blargg_apu_2005.07.30/02.len_table.nes",
+    "blargg_apu_2005.07.30/03.irq_flag.nes",
+    "blargg_apu_2005.07.30/04.clock_jitter.nes",
+    "blargg_apu_2005.07.30/05.len_timing_mode0.nes",
+    "blargg_apu_2005.07.30/06.len_timing_mode1.nes",
+    "blargg_apu_2005.07.30/07.irq_flag_timing.nes",
+    "blargg_apu_2005.07.30/08.irq_timing.nes",
+    "blargg_apu_2005.07.30/09.reset_timing.nes",
+    "blargg_apu_2005.07.30/10.len_halt_timing.nes",
+    "blargg_apu_2005.07.30/11.len_reload_timing.nes",
     "blargg_ppu_tests_2005.09.15b/palette_ram.nes",
     "blargg_ppu_tests_2005.09.15b/sprite_ram.nes",
     "blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes",
@@ -41,10 +89,18 @@ const MUST_PASS: &[&str] = &[
     "cpu_dummy_reads/cpu_dummy_reads.nes",
     "cpu_dummy_writes/cpu_dummy_writes_oam.nes",
     "cpu_dummy_writes/cpu_dummy_writes_ppumem.nes",
+    "cpu_interrupts_v2/rom_singles/1-cli_latency.nes",
+    "cpu_reset/ram_after_reset.nes",
+    "cpu_reset/registers.nes",
     "cpu_timing_test6/cpu_timing_test.nes",
+    "dmc_dma_during_read4/dma_2007_read.nes",
+    "dmc_dma_during_read4/dma_2007_write.nes",
+    "dmc_dma_during_read4/dma_4016_read.nes",
+    "dmc_dma_during_read4/read_write_2007.nes",
     "instr_misc/rom_singles/01-abs_x_wrap.nes",
     "instr_misc/rom_singles/02-branch_wrap.nes",
     "instr_misc/rom_singles/03-dummy_reads.nes",
+    "instr_misc/rom_singles/04-dummy_reads_apu.nes",
     "instr_test-v5/rom_singles/01-basics.nes",
     "instr_test-v5/rom_singles/02-implied.nes",
     "instr_test-v5/rom_singles/03-immediate.nes",
@@ -61,6 +117,8 @@ const MUST_PASS: &[&str] = &[
     "instr_test-v5/rom_singles/14-rti.nes",
     "instr_test-v5/rom_singles/15-brk.nes",
     "instr_test-v5/rom_singles/16-special.nes",
+    "instr_timing/rom_singles/1-instr_timing.nes",
+    "instr_timing/rom_singles/2-branch_timing.nes",
     "mmc3_test/1-clocking.nes",
     "mmc3_test/2-details.nes",
     "mmc3_test/3-A12_clocking.nes",
@@ -83,6 +141,7 @@ const MUST_PASS: &[&str] = &[
     "ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes",
     "ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes",
     "ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes",
+    "read_joy3/thorough_test.nes",
     "sprite_hit_tests_2005.10.05/01.basics.nes",
     "sprite_hit_tests_2005.10.05/02.alignment.nes",
     "sprite_hit_tests_2005.10.05/03.corners.nes",
@@ -98,6 +157,13 @@ const MUST_PASS: &[&str] = &[
     "sprite_overflow_tests/2.Details.nes",
     "sprite_overflow_tests/4.Obscure.nes",
     "sprite_overflow_tests/5.Emulator.nes",
+    "vbl_nmi_timing/1.frame_basics.nes",
+    "vbl_nmi_timing/2.vbl_timing.nes",
+    "vbl_nmi_timing/3.even_odd_frames.nes",
+    "vbl_nmi_timing/4.vbl_clear_timing.nes",
+    "vbl_nmi_timing/5.nmi_suppression.nes",
+    "vbl_nmi_timing/6.nmi_disable.nes",
+    "vbl_nmi_timing/7.nmi_timing.nes",
 ];
 
 #[derive(Debug, PartialEq)]
@@ -141,6 +207,7 @@ fn run_rom(path: &Path) -> Outcome {
     };
 
     let mut nes = Nes::new(cartridge);
+    let mut waiting_for_restart = false;
 
     for _ in 0..MAX_FRAMES {
         if !nes.run_frame() {
@@ -154,11 +221,28 @@ fn run_rom(path: &Path) -> Outcome {
         // check the screen twice a second; verdict text appears once the ROM is done
         if nes.bus().ppu().frame() % 30 == 0 {
             let screen = screen_text(&nes);
+            if is_alternate_correct_result(path, &screen) {
+                return Outcome::Passed;
+            }
             match screen_verdict(&screen) {
                 Some(true) => return Outcome::Passed,
                 Some(false) => return Outcome::Failed { code: 0, text: screen },
                 None => {}
             }
+        }
+
+        // $81: the ROM wants the reset button pressed, at least 100 ms from now. The status keeps its old value
+        // until the restarted ROM overwrites it, so wait for that before looking for another request.
+        if signature == [0xDE, 0xB0, 0x61] && status == 0x81 && !waiting_for_restart {
+            for _ in 0..8 {
+                nes.run_frame();
+            }
+            nes.reset();
+            waiting_for_restart = true;
+            continue;
+        }
+        if status != 0x81 {
+            waiting_for_restart = false;
         }
 
         if signature == [0xDE, 0xB0, 0x61] && status != 0x80 && status != 0x81 {

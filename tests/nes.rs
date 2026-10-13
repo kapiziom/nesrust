@@ -2,11 +2,21 @@
 
 use nesrs::emulator::cartridge::Cartridge;
 use nesrs::emulator::controller::Buttons;
+use nesrs::emulator::region::Region;
 use nesrs::emulator::nes::Nes;
 
 /// Builds an NROM-128 cartridge whose PRG starts at $8000 with `program` and the given interrupt vectors.
 fn nes_with(program: &[u8], nmi: u16, reset: u16) -> Nes {
+    nes_with_region(program, nmi, reset, false)
+}
+
+/// Same, flagged as a PAL cartridge in its NES 2.0 header (byte 12 = 1) when `pal` is set.
+fn nes_with_region(program: &[u8], nmi: u16, reset: u16, pal: bool) -> Nes {
     let mut data = vec![0u8; 16 + 16384 + 8192];
+    if pal {
+        data[7] = 0x08; // NES 2.0
+        data[12] = 1;
+    }
     data[0..4].copy_from_slice(b"NES\x1A");
     data[4] = 1;
     data[5] = 1;
@@ -256,4 +266,58 @@ fn setting_buttons_on_a_missing_port_is_ignored() {
     nes.set_buttons(2, Buttons::A); // there are only two ports
 
     assert_eq!(nes.cpu.peek(0x4016) & 1, 0);
+}
+
+#[test]
+fn the_region_comes_from_the_cartridge_header() {
+    assert_eq!(nes_with(&[0xEA], 0x8000, 0x8000).region(), Region::Ntsc);
+    assert_eq!(nes_with_region(&[0xEA], 0x8000, 0x8000, true).region(), Region::Pal);
+}
+
+#[test]
+fn a_pal_frame_is_longer_in_cpu_cycles_and_the_ppu_runs_3_2_dots_per_cycle() {
+    // JMP $8000 forever
+    let mut nes = nes_with_region(&[0x4C, 0x00, 0x80], 0x8000, 0x8000, true);
+
+    nes.run_frame();
+    let start = nes.cpu.cycles;
+    for _ in 0..4 {
+        nes.run_frame();
+    }
+    let average = (nes.cpu.cycles - start) as f64 / 4.0;
+
+    // 312 * 341 dots / 3.2 dots per cycle = 33247.5 CPU cycles
+    assert!((average - 33_247.5).abs() < 4.0, "a PAL frame took {average} CPU cycles");
+}
+
+#[test]
+fn pal_frames_come_at_about_50_hz() {
+    let mut nes = nes_with_region(&[0x4C, 0x00, 0x80], 0x8000, 0x8000, true);
+    nes.run_frame();
+    let start = nes.cpu.cycles;
+    for _ in 0..50 {
+        nes.run_frame();
+    }
+
+    let seconds = (nes.cpu.cycles - start) as f64 / Region::Pal.cpu_clock_hz();
+
+    assert!((seconds - 50.0 / 50.007).abs() < 0.005, "50 PAL frames took {seconds} s");
+}
+
+#[test]
+fn pal_audio_has_the_requested_sample_rate_per_second_of_console_time() {
+    let mut nes = nes_with_region(&[0x4C, 0x00, 0x80], 0x8000, 0x8000, true);
+    nes.set_sample_rate(48_000);
+    let mut samples = Vec::new();
+    nes.run_frame(); // the first frame starts mid-frame, right after the reset sequence
+    nes.drain_audio(&mut samples);
+    samples.clear();
+
+    for _ in 0..50 {
+        nes.run_frame();
+        nes.drain_audio(&mut samples);
+    }
+
+    // 50 frames = 0.99986 s of PAL time
+    assert!((samples.len() as f64 - 48_000.0 * 50.0 / 50.007).abs() < 20.0, "{} samples", samples.len());
 }
