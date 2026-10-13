@@ -9,6 +9,8 @@ mod nrom;
 mod uxrom;
 
 use super::ines::{CartridgeError, INesFile};
+#[cfg(test)]
+use crate::emulator::region::Region;
 use super::mirroring::Mirroring;
 
 pub trait Mapper {
@@ -157,6 +159,7 @@ mod test_util {
             nes2: false,
             mirroring: Mirroring::Vertical,
             battery: false,
+            region: Region::Ntsc,
             prg_rom: (0..prg_banks_16k * 16384).map(|o| (o / 8192) as u8).collect(),
             chr_rom: (0..chr_banks_8k * 8192).map(|o| (o / 1024) as u8).collect(),
             prg_ram_size: 8192,

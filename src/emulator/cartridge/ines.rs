@@ -4,6 +4,7 @@
 use std::fmt;
 
 use super::mirroring::Mirroring;
+use crate::emulator::region::Region;
 
 const HEADER_SIZE: usize = 16;
 const TRAINER_SIZE: usize = 512;
@@ -50,6 +51,8 @@ pub struct INesFile {
     /// Mirroring wired on the board (some mappers override it at runtime).
     pub mirroring: Mirroring,
     pub battery: bool,
+    /// Console timing the game was made for (NES 2.0 byte 12, or the iNES 1 flag in byte 9).
+    pub region: Region,
     pub prg_rom: Vec<u8>,
     /// Empty when the board has CHR-RAM instead.
     pub chr_rom: Vec<u8>,
@@ -104,6 +107,16 @@ impl INesFile {
             return Err(CartridgeError::Truncated { expected, actual: data.len() });
         }
 
+        // NES 2.0: 0 = NTSC, 1 = PAL, 2 = works on both (NTSC is used), 3 = Dendy (not emulated; NTSC is used).
+        // iNES 1: bit 0 of byte 9 marks PAL, though many dumps never set it.
+        let region = if nes2 {
+            if data[12] & 0x03 == 1 { Region::Pal } else { Region::Ntsc }
+        } else if data[9] & 0x01 != 0 {
+            Region::Pal
+        } else {
+            Region::Ntsc
+        };
+
         let (prg_ram_size, chr_ram_size) = if nes2 {
             (
                 nes2_ram_size(data[10] & 0x0F) + nes2_ram_size(data[10] >> 4),
@@ -131,6 +144,7 @@ impl INesFile {
             nes2,
             mirroring,
             battery: flags6 & 0x02 != 0,
+            region,
             prg_rom: data[prg_start..chr_start].to_vec(),
             chr_rom: data[chr_start..expected].to_vec(),
             prg_ram_size,
@@ -260,6 +274,27 @@ mod tests {
         data[9] = 0x0F;
 
         assert_eq!(INesFile::parse(&data).unwrap_err(), CartridgeError::InvalidSize);
+    }
+
+    #[test]
+    fn region_comes_from_nes2_byte_12_or_the_ines1_pal_flag() {
+        assert_eq!(INesFile::parse(&rom_file(1, 1, 0, 0)).unwrap().region, Region::Ntsc);
+
+        let mut nes2_pal = rom_file(1, 1, 0, 0x08);
+        nes2_pal[12] = 1;
+        assert_eq!(INesFile::parse(&nes2_pal).unwrap().region, Region::Pal);
+
+        let mut nes2_multi = rom_file(1, 1, 0, 0x08);
+        nes2_multi[12] = 2;
+        assert_eq!(INesFile::parse(&nes2_multi).unwrap().region, Region::Ntsc);
+
+        let mut ines1_pal = rom_file(1, 1, 0, 0);
+        ines1_pal[9] = 1;
+        assert_eq!(INesFile::parse(&ines1_pal).unwrap().region, Region::Pal);
+
+        let mut ines1_garbage = rom_file(1, 1, 0, 0);
+        ines1_garbage[12] = 1; // byte 12 means nothing in iNES 1
+        assert_eq!(INesFile::parse(&ines1_garbage).unwrap().region, Region::Ntsc);
     }
 
     #[test]

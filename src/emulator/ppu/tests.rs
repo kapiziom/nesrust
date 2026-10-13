@@ -1,6 +1,7 @@
 use super::*;
 
 const DOTS_PER_FRAME: u64 = 341 * 262;
+const PRE_RENDER_LINE: u16 = 261;
 
 /// NROM with CHR-RAM, so tests can draw their own tiles.
 fn cartridge(vertical: bool) -> Cartridge {
@@ -739,4 +740,44 @@ fn dma_writes_go_through_oamdata() {
     assert_eq!(ppu.oam[0x20], 0x11);
     assert_eq!(ppu.oam[0x21], 0x22);
     assert_eq!(ppu.oam_addr, 0x22);
+}
+
+// ---- PAL ------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_pal_frame_has_312_scanlines_and_no_odd_frame_skip() {
+    let mut cart = cartridge(true);
+    let mut ppu = PPU::with_region(Region::Pal);
+    write(&mut ppu, &mut cart, 1, MASK_BACKGROUND);
+
+    run_frame(&mut ppu, &mut cart);
+    let mut intervals = Vec::new();
+    for _ in 0..3 {
+        let mut dots = 0u64;
+        loop {
+            ppu.tick(&mut cart);
+            dots += 1;
+            if ppu.take_frame_complete() {
+                break;
+            }
+        }
+        intervals.push(dots);
+    }
+
+    assert_eq!(intervals, [341 * 312; 3]);
+}
+
+#[test]
+fn the_pal_pre_render_line_is_311() {
+    let mut cart = cartridge(true);
+    let mut ppu = PPU::with_region(Region::Pal);
+    tick_until(&mut ppu, &mut cart, |ppu| ppu.status & STATUS_VBLANK != 0);
+    ppu.status |= STATUS_SPRITE_ZERO_HIT;
+
+    tick_until(&mut ppu, &mut cart, |ppu| ppu.scanline() == 261 && ppu.dot() == 5);
+    assert_ne!(ppu.status & STATUS_VBLANK, 0, "vblank lasts 70 lines on PAL: still set on line 261");
+
+    tick_until(&mut ppu, &mut cart, |ppu| ppu.scanline() == 311 && ppu.dot() == 2);
+    assert_eq!(ppu.status, 0);
+    assert_eq!(ppu.region(), Region::Pal);
 }

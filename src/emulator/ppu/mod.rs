@@ -5,6 +5,7 @@ pub mod palette;
 mod sprites;
 
 use crate::emulator::cartridge::{Cartridge, Mirroring};
+use crate::emulator::region::Region;
 use palette::Palette;
 use sprites::Sprite;
 
@@ -12,7 +13,6 @@ pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
 
 const DOTS_PER_SCANLINE: u16 = 341;
-const PRE_RENDER_LINE: u16 = 261;
 const VBLANK_LINE: u16 = 241;
 
 const CTRL_NMI_ENABLE: u8 = 0x80;
@@ -32,6 +32,8 @@ const STATUS_SPRITE_ZERO_HIT: u8 = 0x40;
 const STATUS_VBLANK: u8 = 0x80;
 
 pub struct PPU {
+    region: Region,
+
     // registers
     ctrl: u8,
     mask: u8,
@@ -95,7 +97,12 @@ impl Default for PPU {
 
 impl PPU {
     pub fn new() -> Self {
+        Self::with_region(Region::Ntsc)
+    }
+
+    pub fn with_region(region: Region) -> Self {
         PPU {
+            region,
             ctrl: 0,
             mask: 0,
             status: 0,
@@ -177,13 +184,22 @@ impl PPU {
         std::mem::take(&mut self.nmi_pending)
     }
 
+    /// The last scanline of the frame (261 on NTSC, 311 on PAL).
+    fn pre_render_line(&self) -> u16 {
+        self.region.scanlines_per_frame() - 1
+    }
+
+    pub fn region(&self) -> Region {
+        self.region
+    }
+
     fn rendering_enabled(&self) -> bool {
         self.mask & (MASK_BACKGROUND | MASK_SPRITES) != 0
     }
 
     /// True while the PPU is fetching: visible and pre-render lines with rendering enabled.
     fn rendering_active(&self) -> bool {
-        self.rendering_enabled() && (self.scanline < SCREEN_HEIGHT as u16 || self.scanline == PRE_RENDER_LINE)
+        self.rendering_enabled() && (self.scanline < SCREEN_HEIGHT as u16 || self.scanline == self.pre_render_line())
     }
 
     fn update_nmi(&mut self) {
@@ -391,7 +407,7 @@ impl PPU {
     /// Advances the PPU by one dot.
     pub fn tick(&mut self, cartridge: &mut Cartridge) {
         let visible = self.scanline < SCREEN_HEIGHT as u16;
-        let pre_render = self.scanline == PRE_RENDER_LINE;
+        let pre_render = self.scanline == self.pre_render_line();
 
         if self.scanline == VBLANK_LINE && self.dot == 1 {
             if !std::mem::take(&mut self.suppress_vblank) {
@@ -420,8 +436,13 @@ impl PPU {
     fn advance_dot(&mut self) {
         self.dot += 1;
 
-        // odd frames are one dot shorter on the pre-render line (only while rendering)
-        if self.scanline == PRE_RENDER_LINE && self.dot == 340 && self.frame & 1 == 1 && self.rendering_enabled() {
+        // on NTSC odd frames are one dot shorter on the pre-render line (only while rendering)
+        if self.scanline == self.pre_render_line()
+            && self.dot == 340
+            && self.frame & 1 == 1
+            && self.region.skips_dot_on_odd_frames()
+            && self.rendering_enabled()
+        {
             self.dot = DOTS_PER_SCANLINE;
         }
 
@@ -429,7 +450,7 @@ impl PPU {
             self.dot = 0;
             self.scanline += 1;
 
-            if self.scanline > PRE_RENDER_LINE {
+            if self.scanline > self.pre_render_line() {
                 self.scanline = 0;
                 self.frame += 1;
             }

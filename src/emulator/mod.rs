@@ -4,5 +4,6 @@ pub mod cpu;
 pub mod ppu;
 pub mod apu;
 pub mod ram;
+pub mod region;
 pub mod cartridge;
 pub mod nes;

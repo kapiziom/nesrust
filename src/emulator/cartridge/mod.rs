@@ -9,9 +9,12 @@ pub use mirroring::Mirroring;
 
 use mapper::Mapper;
 
+use crate::emulator::region::Region;
+
 pub struct Cartridge {
     mapper: Box<dyn Mapper>,
     mapper_id: u16,
+    region: Region,
 }
 
 impl Cartridge {
@@ -22,11 +25,17 @@ impl Cartridge {
 
     pub fn from_ines(file: INesFile) -> Result<Self, CartridgeError> {
         let mapper_id = file.mapper;
-        Ok(Cartridge { mapper: mapper::create(file)?, mapper_id })
+        let region = file.region;
+        Ok(Cartridge { mapper: mapper::create(file)?, mapper_id, region })
     }
 
     pub fn mapper_id(&self) -> u16 {
         self.mapper_id
+    }
+
+    /// The console timing (NTSC or PAL) the cartridge was made for.
+    pub fn region(&self) -> Region {
+        self.region
     }
 
     /// CPU read in $4020-$FFFF; `None` means open bus.
