@@ -1,15 +1,19 @@
-//! A minimal window to try games by hand. No audio yet.
+//! A minimal window to try games by hand, with sound.
 //!
 //!   cargo run --release --example viewer -- path/to/game.nes
-//!   cargo run --release --example viewer -- path/to/game.nes --screenshot out.png [--frames 120] [--press start]   (no window)
+//!   cargo run --release --example viewer -- path/to/game.nes --screenshot out.png [--frames 120] [--press start [--press-frame 30]] [--wav out.wav]   (no window)
 //!
 //! Keys:  arrows = D-pad   X = A   Z = B   Enter = Start   Right Shift / Backspace = Select
 //!        P = pause   R = reset   Tab (hold) = 4x speed   F12 = screenshot (PNG in the current directory)   Esc = quit
 //!
-//! The window can be resized by dragging its edges.
+//! The window can be resized by dragging its edges. The audio buffer paces the emulation (if there is no sound
+//! device the window's refresh rate does).
 //! Battery-backed RAM is loaded from / saved to `<rom>.sav` next to the ROM.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, fs, process};
 
@@ -31,8 +35,9 @@ const KEY_MAP: [(Key, Buttons); 9] = [
     (Key::Right, Buttons::RIGHT),
 ];
 
-/// The NTSC frame rate is 60.0988 Hz; 60 is close enough without audio to sync to.
+/// Only used when there is no sound device; the NTSC frame rate is really 60.0988 Hz.
 const TARGET_FPS: usize = 60;
+const VOLUME: f32 = 0.8;
 const FAST_FORWARD_FRAMES: usize = 4;
 const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -47,6 +52,7 @@ fn main() {
     let data = fs::read(&path).unwrap_or_else(|error| fail(&format!("cannot read {path}: {error}")));
     let cartridge = Cartridge::from_bytes(&data).unwrap_or_else(|error| fail(&format!("cannot load {path}: {error}")));
     let mapper = cartridge.mapper_id();
+    let region = cartridge.region();
 
     let mut nes = Nes::new(cartridge);
     let save_path = PathBuf::from(&path).with_extension("sav");
@@ -68,13 +74,20 @@ fn main() {
             "right" => Some(Buttons::RIGHT),
             _ => None,
         });
+        let press_frame = option("--press-frame").and_then(|n| n.parse().ok()).unwrap_or(30);
+        let mut recorded = Vec::new();
         for frame in 0..frames {
-            let held = pressed.filter(|_| (30..35).contains(&frame)).unwrap_or(Buttons::empty());
+            let held = pressed.filter(|_| (press_frame..press_frame + 5).contains(&frame)).unwrap_or(Buttons::empty());
             nes.set_buttons(0, held);
             if !nes.run_frame() {
                 eprintln!("the CPU stopped on an unimplemented opcode, PC = {:#06X}", nes.cpu.program_counter);
                 break;
             }
+            nes.drain_audio(&mut recorded);
+        }
+        if let Some(wav) = option("--wav") {
+            save_wav(&wav, &recorded, 48_000);
+            println!("saved {wav}: {} samples", recorded.len());
         }
         save_png(&screenshot, nes.framebuffer());
         println!("saved {screenshot} after {frames} frames");
@@ -85,7 +98,19 @@ fn main() {
     let options = WindowOptions { scale: Scale::X2, resize: true, ..WindowOptions::default() };
     let mut window = Window::new(&name, SCREEN_WIDTH, SCREEN_HEIGHT, options)
         .unwrap_or_else(|error| fail(&format!("cannot open a window: {error}")));
-    window.set_target_fps(TARGET_FPS);
+
+    let audio = AudioOutput::new();
+    match &audio {
+        Some(audio) => {
+            eprintln!("{region:?} timing, {:.2} frames/s", region.frame_rate());
+            nes.set_sample_rate(audio.sample_rate)
+        }
+        None => {
+            eprintln!("no usable audio device: running without sound");
+            window.set_target_fps(TARGET_FPS);
+        }
+    }
+    let mut audio_samples = Vec::new();
 
     let mut pixels = vec![0u32; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut paused = false;
@@ -94,6 +119,12 @@ fn main() {
     let mut fps_timer = Instant::now();
     let mut fps = 0.0;
     let mut screenshots = 0;
+    let mut title = String::new();
+    let debug = env::var_os("VIEWER_DEBUG").is_some();
+    let mut debug_timer = Instant::now();
+    let mut debug_consumed = 0u64;
+    let mut debug_frames = 0u64;
+    let mut total_frames = 0u64;
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         if window.is_key_pressed(Key::P, KeyRepeat::No) {
@@ -111,15 +142,41 @@ fn main() {
         let buttons = KEY_MAP.iter().filter(|(key, _)| window.is_key_down(*key)).fold(Buttons::empty(), |all, (_, button)| all | *button);
         nes.set_buttons(0, buttons);
 
+        let fast_forward = window.is_key_down(Key::Tab);
+        let mut ran_a_frame = false;
+
         if !paused && !stopped {
-            let frames = if window.is_key_down(Key::Tab) { FAST_FORWARD_FRAMES } else { 1 };
-            for _ in 0..frames {
-                if !nes.run_frame() {
-                    stopped = true;
-                    eprintln!("the CPU stopped on an unimplemented opcode, PC = {:#06X}", nes.cpu.program_counter);
-                    break;
+            // with sound the audio buffer is the clock: emulate only while it is running low
+            let wanted = fast_forward || audio.as_ref().map_or(true, |audio| audio.queued() < audio.target_queue);
+
+            if wanted {
+                let frames = if fast_forward { FAST_FORWARD_FRAMES } else { 1 };
+                for _ in 0..frames {
+                    if !nes.run_frame() {
+                        stopped = true;
+                        eprintln!("the CPU stopped on an unimplemented opcode, PC = {:#06X}", nes.cpu.program_counter);
+                        break;
+                    }
+                    frames_counted += 1;
+                    total_frames += 1;
+                    ran_a_frame = true;
+
+                    audio_samples.clear();
+                    nes.drain_audio(&mut audio_samples);
+                    if let (Some(audio), false) = (&audio, fast_forward) {
+                        audio.push(&audio_samples);
+                    }
                 }
-                frames_counted += 1;
+            }
+        }
+
+        if !ran_a_frame {
+            // nothing new to show: keep the window responsive without spinning
+            let idle = if paused || stopped { Duration::from_millis(16) } else { Duration::from_millis(1) };
+            std::thread::sleep(idle);
+            if !paused && !stopped {
+                window.update();
+                continue;
             }
         }
 
@@ -130,13 +187,31 @@ fn main() {
             fail(&format!("cannot update the window: {error}"));
         }
 
+        if debug && debug_timer.elapsed() >= Duration::from_secs(2) {
+            let seconds = debug_timer.elapsed().as_secs_f64();
+            let consumed = audio.as_ref().map_or(0, |audio| audio.consumed.load(Ordering::Relaxed));
+            eprintln!(
+                "debug: emulated {:.2} frames/s, device consumed {:.0} audio frames/s, queue {}",
+                (total_frames - debug_frames) as f64 / seconds,
+                (consumed - debug_consumed) as f64 / seconds,
+                audio.as_ref().map_or(0, |audio| audio.queued()),
+            );
+            debug_timer = Instant::now();
+            debug_consumed = consumed;
+            debug_frames = total_frames;
+        }
+
         if fps_timer.elapsed() >= Duration::from_secs(1) {
             fps = frames_counted as f64 / fps_timer.elapsed().as_secs_f64();
             frames_counted = 0;
             fps_timer = Instant::now();
         }
         let state = if stopped { " - CPU stopped" } else if paused { " - paused" } else { "" };
-        window.set_title(&format!("{name} (mapper {mapper}) - {fps:.0} fps{state}"));
+        let new_title = format!("{name} ({region:?}, mapper {mapper}) - {fps:.0} fps{state}");
+        if new_title != title {
+            window.set_title(&new_title);
+            title = new_title;
+        }
     }
 
     if let Some(battery_ram) = nes.cpu.bus.cartridge.battery_ram() {
@@ -207,4 +282,115 @@ fn crc32(data: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+/// Sound output through the default audio device: the APU's samples are queued and a cpal stream plays them.
+struct AudioOutput {
+    _stream: cpal::Stream,
+    queue: Arc<Mutex<VecDeque<f32>>>,
+    /// Audio frames the device has asked for so far (to check its real playback rate).
+    consumed: Arc<AtomicU64>,
+    sample_rate: u32,
+    /// The queue length (about 70 ms of sound) the emulation tries to keep up.
+    target_queue: usize,
+}
+
+impl AudioOutput {
+    fn new() -> Option<Self> {
+        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+        let device = cpal::default_host().default_output_device()?;
+        let supported = device.default_output_config().ok()?;
+        let sample_rate = supported.sample_rate();
+        let channels = supported.channels() as usize;
+        let format = supported.sample_format();
+        let config = supported.config();
+        let queue = Arc::new(Mutex::new(VecDeque::new()));
+        let consumed = Arc::new(AtomicU64::new(0));
+        eprintln!("audio: {sample_rate} Hz, {channels} channels, {format:?}");
+
+        let stream = match format {
+            cpal::SampleFormat::F32 => Self::build_stream::<f32>(&device, config, channels, queue.clone(), consumed.clone()),
+            cpal::SampleFormat::I16 => Self::build_stream::<i16>(&device, config, channels, queue.clone(), consumed.clone()),
+            cpal::SampleFormat::U16 => Self::build_stream::<u16>(&device, config, channels, queue.clone(), consumed.clone()),
+            other => {
+                eprintln!("unsupported audio sample format {other:?}");
+                None
+            }
+        }?;
+        stream.play().ok()?;
+
+        Some(AudioOutput { _stream: stream, queue, consumed, sample_rate, target_queue: sample_rate as usize / 15 })
+    }
+
+    fn build_stream<T>(
+        device: &cpal::Device,
+        config: cpal::StreamConfig,
+        channels: usize,
+        queue: Arc<Mutex<VecDeque<f32>>>,
+        consumed: Arc<AtomicU64>,
+    ) -> Option<cpal::Stream>
+    where
+        T: cpal::SizedSample + cpal::FromSample<f32>,
+    {
+        use cpal::traits::DeviceTrait;
+
+        device
+            .build_output_stream(
+                config,
+                move |data: &mut [T], _| {
+                    let mut queue = queue.lock().unwrap();
+                    consumed.fetch_add((data.len() / channels) as u64, Ordering::Relaxed);
+                    for frame in data.chunks_mut(channels) {
+                        // the sound is mono: every channel gets the same sample (silence if the queue ran dry)
+                        frame.fill(T::from_sample(queue.pop_front().unwrap_or(0.0)));
+                    }
+                },
+                |error| eprintln!("audio error: {error}"),
+                None,
+            )
+            .map_err(|error| eprintln!("cannot open the audio stream: {error}"))
+            .ok()
+    }
+
+    fn queued(&self) -> usize {
+        self.queue.lock().unwrap().len()
+    }
+
+    fn push(&self, samples: &[f32]) {
+        let mut queue = self.queue.lock().unwrap();
+        queue.extend(samples.iter().map(|sample| sample * VOLUME));
+
+        // never let the delay grow beyond a second
+        let limit = self.sample_rate as usize;
+        if queue.len() > limit {
+            let excess = queue.len() - limit;
+            queue.drain(..excess);
+        }
+    }
+}
+
+/// Writes mono 16-bit PCM.
+fn save_wav(path: &str, samples: &[f32], sample_rate: u32) {
+    let data_len = samples.len() as u32 * 2;
+    let mut wav = Vec::with_capacity(44 + data_len as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    for sample in samples {
+        wav.extend_from_slice(&((sample.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+    }
+
+    if let Err(error) = fs::write(path, wav) {
+        eprintln!("cannot write {path}: {error}");
+    }
 }

@@ -11,4 +11,5 @@ log = "0.4.22"
 opt-level = 2
 
 [dev-dependencies]
+cpal = "0.18.2"
 minifb = "0.29.0"
