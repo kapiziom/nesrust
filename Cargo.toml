@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 bitflags = "2.6.0"
 log = "0.4.22"
+
+[profile.dev]
+opt-level = 2
