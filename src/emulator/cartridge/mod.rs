@@ -47,6 +47,11 @@ impl Cartridge {
         self.mapper.ppu_write(addr, data);
     }
 
+    /// The PPU drove `addr` onto its address bus outside of a pattern table access.
+    pub fn ppu_address_changed(&mut self, addr: u16) {
+        self.mapper.ppu_address_changed(addr);
+    }
+
     pub fn mirroring(&self) -> Mirroring {
         self.mapper.mirroring()
     }

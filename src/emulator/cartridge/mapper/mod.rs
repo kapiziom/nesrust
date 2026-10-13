@@ -24,6 +24,10 @@ pub trait Mapper {
     /// PPU pattern table write; only has an effect on CHR-RAM.
     fn ppu_write(&mut self, addr: u16, data: u8);
 
+    /// The PPU put an address on its bus without a pattern table access (PPUADDR/PPUDATA while not fetching).
+    /// MMC3 watches address line A12 and counts rising edges, wherever they come from.
+    fn ppu_address_changed(&mut self, _addr: u16) {}
+
     /// Current nametable mirroring (may change at runtime).
     fn mirroring(&self) -> Mirroring;
 

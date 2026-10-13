@@ -168,6 +168,10 @@ impl Mapper for Mmc3 {
         self.chr.write(self.chr_offset(addr), data);
     }
 
+    fn ppu_address_changed(&mut self, addr: u16) {
+        self.watch_a12(addr);
+    }
+
     fn mirroring(&self) -> Mirroring {
         if self.board_mirroring == Mirroring::FourScreen {
             Mirroring::FourScreen
