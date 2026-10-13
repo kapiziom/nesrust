@@ -19,10 +19,11 @@ Single crate `nesrs` (lib + bin). Module layout under `src/emulator/`:
 |---|---|
 | `cpu/` | 6502 official opcodes + stable unofficial ones (NOP variants, SBC $EB, LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS; `OperationCode::official` marks them), `CPU<B: CpuBus>` with static dispatch; **every bus access is one CPU cycle** (`CPU::read/write` tick the bus; dummy reads/writes included), opcode table is a `const` array, dispatch is by `Mnemonic`. **Passes nestest** (`tests/nestest.rs`, compares PC/A/X/Y/P/SP/CYC with the reference log). NMI (edge), IRQ (level, via `CpuBus::irq_pending`, masked by I) and BRK are handled with correct B/U bits and return addresses. `reset()` implemented. Remaining: CLI/SEI/PLP interrupt-poll delay, exact poll timing, SingleStepTests (see PLAN.md). Unstable unofficial ops (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM not implemented.  |
 | `bus/` | `CpuBus` trait (`read(&mut self)`, `write`, `tick`, `fetch_nmi`, `irq_pending`), real `Bus` (RAM+PPU+cartridge, open-bus value for unmapped reads), `MockBus` (flat 64KB for CPU tests). APU/controller registers are stubs. |
-| `cartridge/` | `ines.rs`: iNES + NES 2.0 parser (`Result`, never panics). `mapper/`: `trait Mapper` + NROM(0), MMC1(1), UxROM(2), CNROM(3), MMC3(4), AxROM(7); mapper-controlled mirroring, PRG-RAM/battery RAM, CHR-RAM, IRQ line. `Cartridge` wraps a boxed mapper. PPU does not use it yet (PPU is still a stub). |
-| `ppu/` | Stub: timing counters + NMI flag only. Registers are **not** implemented. |
+| `cartridge/` | `ines.rs`: iNES + NES 2.0 parser (`Result`, never panics). `mapper/`: `trait Mapper` + NROM(0), MMC1(1), UxROM(2), CNROM(3), MMC3(4), AxROM(7); mapper-controlled mirroring, PRG-RAM/battery RAM, CHR-RAM, IRQ line. `Cartridge` wraps a boxed mapper. The PPU reads CHR through `Cartridge::ppu_read` and mirroring through `mirroring()`. |
+| `ppu/` | Dot-by-dot 2C02: registers, VRAM/palette, loopy scrolling, background + sprite pipelines, sprite 0 hit/overflow, NMI/vblank timing, RGBA framebuffer + palette-index buffer. `sprites.rs`, `palette.rs`. Evaluation of sprites happens at dot 257 (not per dot); no open-bus decay. |
 | `apu/` | Empty. |
-| `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` (instruction tracing via `RUST_LOG=trace` once a logger is set up; none is yet). Real ROMs will not get far: PPU and APU are stubs. |
+| `nes.rs` | `Nes` facade: CPU + bus; `new` (runs reset), `reset`, `run_frame`, `framebuffer`. Entry point for frontends and test runners. |
+| `main.rs` | Throw-away runner: `cargo run -- <rom.nes>` starts the CPU at `$8000` (instruction tracing via `RUST_LOG=trace` once a logger is set up; none is yet). The runner does not display anything yet; there is no APU or controller input. |
 
 ## Commands
 
@@ -56,6 +57,8 @@ cargo run --release           # run the demo binary
 - Primary CPU oracle: **nestest** (`nestest.nes` + `nestest.log`, run from `$C000` with PC override, compare per-instruction log incl. cycles). Then Klaus Dormann 6502 functional test and SingleStepTests/65x02 JSON tests for per-cycle bus traces.
 - Blargg test ROMs (`instr_test-v5`, `cpu_interrupts_v2`, `ppu_vbl_nmi`, `ppu_sprite_hit`, `apu_test`, …) report status via `$6000` — a headless runner should poll that.
 - Test ROMs go in `test_rom/` (only freely redistributable ones). **Never commit commercial game ROMs.**
+- `tests/blargg.rs` runs Blargg's ROMs from `test_rom/blargg/` headless (67/81 pass; the passing ones are the `MUST_PASS` regression gate). `BLARGG_FILTER=ppu_vbl_nmi cargo test --test blargg -- --nocapture` runs a subset and prints each result. After a change that makes more ROMs pass, add them to `MUST_PASS`. See PLAN.md for what the failing ones need.
+- Timing between CPU and PPU is calibrated, not guessed: `READ_DOTS_BEFORE` / `WRITE_DOTS_BEFORE` in `bus/mod.rs` were chosen so ppu_vbl_nmi passes 10/10. Re-run it after touching PPU or bus timing.
 - Spec: https://www.nesdev.org/wiki/ (CPU, PPU registers/rendering/scrolling, APU, mappers, iNES/NES 2.0).
 
 ## Working agreements
