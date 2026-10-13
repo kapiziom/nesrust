@@ -38,17 +38,29 @@ impl<B: CpuBus> CPU<B> {
 
         self.insert_flag(CpuFlags::INTERRUPT_DISABLE);
 
-        let low = self.read(interrupt.vector_addr) as u16;
-        let high = self.read(interrupt.vector_addr.wrapping_add(1)) as u16;
+        // an NMI that arrives while BRK/IRQ is being entered takes over the vector fetch
+        let vector = if interrupt.vector_addr != NMI.vector_addr && self.nmi_latched {
+            self.nmi_latched = false;
+            self.nmi_ready = false;
+            NMI.vector_addr
+        } else {
+            interrupt.vector_addr
+        };
+
+        let low = self.read(vector) as u16;
+        let high = self.read(vector.wrapping_add(1)) as u16;
         self.program_counter = (high << 8) | low;
     }
 
-    /// Services a pending NMI (edge, has priority) or IRQ (level, masked by the I flag)
-    /// before the next opcode is fetched. Returns true if an interrupt was taken (7 cycles).
+    /// Services an NMI (edge, has priority) or IRQ (level, masked by the I flag) as seen at the end of the previous
+    /// instruction's second-to-last cycle, before the next opcode is fetched. Returns true if an interrupt was taken.
     pub (super) fn poll_interrupts(&mut self) -> bool {
-        let interrupt = if self.bus.fetch_nmi().is_some() {
+        let interrupt = if self.nmi_ready {
+            self.nmi_ready = false;
+            self.nmi_latched = false;
             NMI
-        } else if self.bus.irq_pending() && !self.contains_flag(CpuFlags::INTERRUPT_DISABLE) {
+        } else if self.irq_ready {
+            self.irq_ready = false;
             IRQ
         } else {
             return false;

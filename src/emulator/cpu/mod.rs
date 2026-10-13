@@ -20,6 +20,15 @@ pub struct CPU<B: CpuBus> {
     pub bus: B,
     /// Total CPU cycles executed since creation (for tracing/test comparison).
     pub cycles: u64,
+
+    // Interrupt lines are sampled at the end of every cycle; an instruction only reacts to what was seen at the end
+    // of its second-to-last cycle (hence the "ready" copies, one sample behind).
+    /// An NMI edge was seen and not yet serviced.
+    nmi_latched: bool,
+    nmi_ready: bool,
+    /// IRQ line was low and the I flag clear at the last sample.
+    irq_sampled: bool,
+    irq_ready: bool,
 }
 
 /// Snapshot of the programmer-visible CPU registers.
@@ -46,6 +55,10 @@ impl<B: CpuBus> CPU<B> {
             flags: CpuFlags::INTERRUPT_DISABLE | CpuFlags::UNUSED,
             bus,
             cycles: 0,
+            nmi_latched: false,
+            nmi_ready: false,
+            irq_sampled: false,
+            irq_ready: false,
         }
     }
 
@@ -126,7 +139,28 @@ impl<B: CpuBus> CPU<B> {
         };
 
         self.execute(&op);
+
+        if let Some(page) = self.bus.take_oam_dma() {
+            self.run_oam_dma(page);
+        }
+
         true
+    }
+
+    /// $4014 OAM DMA: 256 read/write pairs stall the CPU for 513 cycles, 514 when it starts on an odd cycle.
+    /// https://www.nesdev.org/wiki/DMA#OAM_DMA
+    fn run_oam_dma(&mut self, page: u8) {
+        let odd_cycle = self.cycles & 1 == 1;
+
+        self.tick(); // halt cycle
+        if odd_cycle {
+            self.tick(); // alignment cycle
+        }
+
+        for offset in 0..=0xFFu16 {
+            let value = self.read((page as u16) << 8 | offset);
+            self.write(0x2004, value);
+        }
     }
 
     fn execute(&mut self, op: &OperationCode) {
@@ -253,6 +287,26 @@ impl<B: CpuBus> CPU<B> {
                 cpu.adc(result);
                 result
             }),
+            Mnemonic::XAA => { let value = self.read_operand(mode); self.set_register_a(self.register_x & value) }
+            Mnemonic::LXA => {
+                let value = self.read_operand(mode);
+                self.register_a = value;
+                self.set_register_x(value);
+            }
+            Mnemonic::LAS => {
+                let value = self.read_operand(mode);
+                let result = value & self.stack_pointer;
+                self.register_a = result;
+                self.stack_pointer = result;
+                self.set_register_x(result);
+            }
+            Mnemonic::SHY => self.store_masked_by_high_byte(mode, self.register_y),
+            Mnemonic::SHX => self.store_masked_by_high_byte(mode, self.register_x),
+            Mnemonic::SHA => self.store_masked_by_high_byte(mode, self.register_a & self.register_x),
+            Mnemonic::TAS => {
+                self.stack_pointer = self.register_a & self.register_x;
+                self.store_masked_by_high_byte(mode, self.stack_pointer);
+            }
             Mnemonic::ANC => { let value = self.read_operand(mode); self.anc(value) }
             Mnemonic::ALR => { let value = self.read_operand(mode); self.alr(value) }
             Mnemonic::ARR => { let value = self.read_operand(mode); self.arr(value) }
@@ -264,18 +318,37 @@ impl<B: CpuBus> CPU<B> {
     pub (super) fn tick(&mut self) {
         self.cycles += 1;
         self.bus.tick(1);
+        self.end_cycle();
     }
 
     /// Bus read; costs one CPU cycle.
     pub (super) fn read(&mut self, address: u16) -> u8 {
-        self.tick();
-        self.bus.read(address)
+        self.cycles += 1;
+        self.bus.tick_before_access(false);
+        let value = self.bus.read(address);
+        self.bus.tick_after_access(false);
+        self.end_cycle();
+        value
     }
 
     /// Bus write; costs one CPU cycle.
     pub (super) fn write(&mut self, address: u16, data: u8) {
-        self.tick();
+        self.cycles += 1;
+        self.bus.tick_before_access(true);
         self.bus.write(address, data);
+        self.bus.tick_after_access(true);
+        self.end_cycle();
+    }
+
+    /// Samples the interrupt lines at the end of a cycle.
+    fn end_cycle(&mut self) {
+        self.nmi_ready = self.nmi_latched;
+        self.irq_ready = self.irq_sampled;
+
+        if self.bus.fetch_nmi().is_some() {
+            self.nmi_latched = true;
+        }
+        self.irq_sampled = self.bus.irq_pending() && !self.flags.contains(CpuFlags::INTERRUPT_DISABLE);
     }
 
     /// Bus read without cycle cost, for tests and debugging.
@@ -393,17 +466,19 @@ mod test {
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE); // NMI ignores the I flag anyway
         cpu.insert_flag(CpuFlags::CARRY);
 
+        // the line is sampled at the end of the NOP's first cycle, so the NOP finishes before the NMI is taken
+        assert!(cpu.step());
+        assert_eq!(cpu.program_counter, 0x8001);
         assert!(cpu.step());
 
         assert_eq!(cpu.program_counter, 0x9000, "jumped through the NMI vector");
-        assert_eq!(cpu.cycles, 7);
+        assert_eq!(cpu.cycles, 2 + 7);
         assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
 
-        // the NOP at $8000 was not executed: return address is $8000 itself
         let status = cpu.pop_stack();
         assert_eq!(status & 0b0011_0000, 0b0010_0000, "NMI pushes B=0, bit 5=1");
         assert_ne!(status & CpuFlags::CARRY.bits(), 0);
-        assert_eq!(cpu.pop_stack(), 0x00);
+        assert_eq!(cpu.pop_stack(), 0x01);
         assert_eq!(cpu.pop_stack(), 0x80);
     }
 
@@ -411,6 +486,7 @@ mod test {
     fn test_nmi_is_edge_triggered() {
         let mut cpu = interrupt_test_cpu(|bus| bus.nmi_interrupt = Some(1));
 
+        cpu.step(); // NOP
         cpu.step(); // NMI
         cpu.poke(0x9000, 0xEA);
         cpu.step(); // NOP in the handler, no second NMI
@@ -433,10 +509,11 @@ mod test {
         let mut cpu = interrupt_test_cpu(|bus| bus.irq_line = true);
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
 
+        cpu.step(); // NOP, the level is sampled during it
         cpu.step();
 
         assert_eq!(cpu.program_counter, 0xA000);
-        assert_eq!(cpu.cycles, 7);
+        assert_eq!(cpu.cycles, 2 + 7);
         assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE), "handler runs with IRQs masked");
         assert_eq!(cpu.pop_stack() & 0b0011_0000, 0b0010_0000, "IRQ pushes B=0, bit 5=1");
     }
@@ -446,9 +523,62 @@ mod test {
         let mut cpu = interrupt_test_cpu(|bus| { bus.nmi_interrupt = Some(1); bus.irq_line = true; });
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
 
+        cpu.step(); // NOP
         cpu.step();
 
         assert_eq!(cpu.program_counter, 0x9000);
+    }
+
+    #[test]
+    fn test_cli_delays_irq_by_one_instruction() {
+        let mut cpu = interrupt_test_cpu(|bus| {
+            bus.irq_line = true;
+            bus.load_program(&[0x58, 0xEA, 0xEA], 0x8000); // CLI, NOP, NOP
+        });
+
+        cpu.step(); // CLI
+        assert_eq!(cpu.program_counter, 0x8001);
+        cpu.step(); // the IRQ is still masked in CLI's polling window: the NOP runs
+        assert_eq!(cpu.program_counter, 0x8002);
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0xA000, "IRQ is taken after the instruction following CLI");
+        assert_eq!(cpu.pop_stack() & 0b0011_0000, 0b0010_0000);
+        assert_eq!(cpu.pop_stack(), 0x02);
+    }
+
+    #[test]
+    fn test_sei_does_not_stop_an_irq_that_was_already_seen() {
+        let mut cpu = interrupt_test_cpu(|bus| {
+            bus.irq_line = true;
+            bus.load_program(&[0x78, 0xEA], 0x8000); // SEI, NOP
+        });
+        cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
+
+        cpu.step(); // SEI
+        assert!(cpu.contains_flag(CpuFlags::INTERRUPT_DISABLE));
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0xA000, "the IRQ still fires right after SEI");
+    }
+
+    #[test]
+    fn test_nmi_hijacks_the_vector_of_a_brk() {
+        let mut cpu = interrupt_test_cpu(|bus| {
+            bus.nmi_interrupt = Some(1);
+            bus.load_program(&[0x00, 0x00], 0x8000); // BRK
+            bus.memory[0x9000] = 0xEA;
+        });
+
+        cpu.step();
+
+        assert_eq!(cpu.program_counter, 0x9000, "NMI vector, not the BRK vector");
+        assert_eq!(cpu.pop_stack() & 0b0011_0000, 0b0011_0000, "the pushed status still has B set");
+        assert_eq!(cpu.pop_stack(), 0x02);
+        assert_eq!(cpu.pop_stack(), 0x80);
+
+        cpu.step();
+        assert_eq!(cpu.program_counter, 0x9001, "the NMI was consumed by the hijack");
     }
 
     #[test]
@@ -459,6 +589,8 @@ mod test {
         });
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
         cpu.insert_flag(CpuFlags::CARRY);
+
+        cpu.step(); // NOP
         let before = cpu.state();
 
         cpu.step(); // NMI

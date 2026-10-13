@@ -82,15 +82,21 @@ impl<B: CpuBus> CPU<B> {
                 (high << 8) | low
             }
             AddressingMode::IndirectY => {
-                let pointer = self.fetch();
-                let low = self.read(pointer as u16) as u16;
-                let high = self.read(pointer.wrapping_add(1) as u16) as u16;
-                self.add_index((high << 8) | low, self.register_y, access)
+                let base = self.fetch_indirect_base();
+                self.add_index(base, self.register_y, access)
             }
             AddressingMode::Implicit | AddressingMode::Accumulator | AddressingMode::Relative => {
                 unreachable!("{:?} has no operand address", mode)
             }
         }
+    }
+
+    /// The 16-bit pointer of a (zp),Y operand, read from the zero page (wrapping inside it).
+    fn fetch_indirect_base(&mut self) -> u16 {
+        let pointer = self.fetch();
+        let low = self.read(pointer as u16) as u16;
+        let high = self.read(pointer.wrapping_add(1) as u16) as u16;
+        (high << 8) | low
     }
 
     fn indexed_zero_page(&mut self, index: u8) -> u16 {
@@ -137,6 +143,26 @@ impl<B: CpuBus> CPU<B> {
         self.write(address, value);
         let result = operation(self, value);
         self.write(address, result);
+    }
+
+    /// SHA/SHX/SHY/TAS: stores `value & (high byte of the base address + 1)`. When the index crosses a page the
+    /// value also replaces the high byte of the target address. https://www.nesdev.org/wiki/CPU_unofficial_opcodes
+    pub (super) fn store_masked_by_high_byte(&mut self, mode: AddressingMode, value: u8) {
+        let (base, index) = match mode {
+            AddressingMode::AbsoluteX => (self.fetch_u16(), self.register_x),
+            AddressingMode::AbsoluteY => (self.fetch_u16(), self.register_y),
+            AddressingMode::IndirectY => (self.fetch_indirect_base(), self.register_y),
+            _ => unreachable!("{:?} is not an indexed addressing mode", mode),
+        };
+
+        let address = base.wrapping_add(index as u16);
+        self.read((base & 0xFF00) | (address & 0x00FF)); // dummy read at the uncorrected address
+
+        let result = value & ((base >> 8) as u8).wrapping_add(1);
+        let crossed_page = (base & 0xFF00) != (address & 0xFF00);
+        let target = if crossed_page { ((result as u16) << 8) | (address & 0x00FF) } else { address };
+
+        self.write(target, result);
     }
 
     /// The extra cycle of implied/accumulator instructions: a dummy read of the next byte.

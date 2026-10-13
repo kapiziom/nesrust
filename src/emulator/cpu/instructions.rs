@@ -189,10 +189,10 @@ impl<B: CpuBus> CPU<B> {
         self.implied();
         self.stack_dummy_read();
         let status = self.pop_stack();
+        self.set_status_from_stack(status);
         let low = self.pop_stack() as u16;
         let high = self.pop_stack() as u16;
 
-        self.set_status_from_stack(status);
         self.program_counter = (high << 8) | low;
     }
 

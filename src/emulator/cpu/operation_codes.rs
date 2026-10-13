@@ -14,6 +14,8 @@ pub enum Mnemonic {
     TAX, TAY, TSX, TXA, TXS, TYA,
     // unofficial
     LAX, SAX, DCP, ISB, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS,
+    // unofficial, unstable
+    XAA, LXA, SHA, SHY, SHX, TAS, LAS,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -42,7 +44,8 @@ impl OperationCode {
         -> Self {
         let page_cross_penalty = matches!(addressing_mode, AddressingMode::AbsoluteX | AddressingMode::AbsoluteY | AddressingMode::IndirectY)
             && matches!(mnemonic, Mnemonic::ADC | Mnemonic::AND | Mnemonic::CMP | Mnemonic::EOR | Mnemonic::LDA
-                | Mnemonic::LDX | Mnemonic::LDY | Mnemonic::ORA | Mnemonic::SBC | Mnemonic::NOP | Mnemonic::LAX);
+                | Mnemonic::LDX | Mnemonic::LDY | Mnemonic::ORA | Mnemonic::SBC | Mnemonic::NOP | Mnemonic::LAX
+                | Mnemonic::LAS);
 
         OperationCode { code, mnemonic, addressing_mode, bytes, cycles, official, page_cross_penalty }
     }
@@ -327,7 +330,6 @@ pub const CPU_OPERATION_CODES: &[OperationCode] = &[
     OperationCode::new(0x98, Mnemonic::TYA, AddressingMode::Implicit, 1, 2),
 
     // Unofficial opcodes (https://www.nesdev.org/wiki/CPU_unofficial_opcodes)
-    // Unstable ones (XAA, AHX, SHX, SHY, TAS, LAS, LAX #imm) and KIL/JAM are not implemented.
 
     // NOP - implied
     OperationCode::unofficial(0x1A, Mnemonic::NOP, AddressingMode::Implicit, 1, 2),
@@ -439,4 +441,20 @@ pub const CPU_OPERATION_CODES: &[OperationCode] = &[
     OperationCode::unofficial(0x6B, Mnemonic::ARR, AddressingMode::Immediate, 2, 2),
     // AXS (SBX) - X = (A & X) - #imm
     OperationCode::unofficial(0xCB, Mnemonic::AXS, AddressingMode::Immediate, 2, 2),
+
+    // Unstable on real hardware; implemented with the behaviour the common test ROMs expect.
+    // XAA - A = X & #imm
+    OperationCode::unofficial(0x8B, Mnemonic::XAA, AddressingMode::Immediate, 2, 2),
+    // LXA - A = X = #imm
+    OperationCode::unofficial(0xAB, Mnemonic::LXA, AddressingMode::Immediate, 2, 2),
+    // SHA (AHX) - store A & X & (high byte of the base address + 1)
+    OperationCode::unofficial(0x93, Mnemonic::SHA, AddressingMode::IndirectY, 2, 6),
+    OperationCode::unofficial(0x9F, Mnemonic::SHA, AddressingMode::AbsoluteY, 3, 5),
+    // SHY - store Y & (H + 1);  SHX - store X & (H + 1)
+    OperationCode::unofficial(0x9C, Mnemonic::SHY, AddressingMode::AbsoluteX, 3, 5),
+    OperationCode::unofficial(0x9E, Mnemonic::SHX, AddressingMode::AbsoluteY, 3, 5),
+    // TAS (XAS) - SP = A & X, then store SP & (H + 1)
+    OperationCode::unofficial(0x9B, Mnemonic::TAS, AddressingMode::AbsoluteY, 3, 5),
+    // LAS - A = X = SP = M & SP
+    OperationCode::unofficial(0xBB, Mnemonic::LAS, AddressingMode::AbsoluteY, 3, 4 /* (+1 if page crossed) */),
 ];
