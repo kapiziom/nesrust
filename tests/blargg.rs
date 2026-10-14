@@ -44,7 +44,10 @@ const SKIPPED: &[&str] = &[
 /// Some ROMs print a checksum of their output instead of "Passed" when it differs from the one they were built
 /// with, although their documentation lists other correct outcomes (they depend on the CPU-PPU alignment at power-on).
 /// `(ROM path suffix, accepted checksums)`.
-const ALTERNATE_CORRECT_RESULTS: &[(&str, &[&str])] = &[("dma_2007_read.nes", &["159A7A8F", "5E3DF9C4"])];
+const ALTERNATE_CORRECT_RESULTS: &[(&str, &[&str])] = &[
+    ("dma_2007_read.nes", &["159A7A8F", "5E3DF9C4"]),
+    ("double_2007_read.nes", &["85CFD627", "F018C287", "440EF923", "E52F41A5"]),
+];
 
 fn is_alternate_correct_result(path: &Path, screen: &str) -> bool {
     ALTERNATE_CORRECT_RESULTS
@@ -80,6 +83,7 @@ const MUST_PASS: &[&str] = &[
     "blargg_apu_2005.07.30/10.len_halt_timing.nes",
     "blargg_apu_2005.07.30/11.len_reload_timing.nes",
     "blargg_ppu_tests_2005.09.15b/palette_ram.nes",
+    "blargg_ppu_tests_2005.09.15b/power_up_palette.nes",
     "blargg_ppu_tests_2005.09.15b/sprite_ram.nes",
     "blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes",
     "blargg_ppu_tests_2005.09.15b/vram_access.nes",
@@ -100,6 +104,7 @@ const MUST_PASS: &[&str] = &[
     "dmc_dma_during_read4/dma_2007_read.nes",
     "dmc_dma_during_read4/dma_2007_write.nes",
     "dmc_dma_during_read4/dma_4016_read.nes",
+    "dmc_dma_during_read4/double_2007_read.nes",
     "dmc_dma_during_read4/read_write_2007.nes",
     "instr_misc/rom_singles/01-abs_x_wrap.nes",
     "instr_misc/rom_singles/02-branch_wrap.nes",
@@ -146,6 +151,8 @@ const MUST_PASS: &[&str] = &[
     "ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes",
     "ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes",
     "ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes",
+    "sprdma_and_dmc_dma/sprdma_and_dmc_dma.nes",
+    "sprdma_and_dmc_dma/sprdma_and_dmc_dma_512.nes",
     "sprite_hit_tests_2005.10.05/01.basics.nes",
     "sprite_hit_tests_2005.10.05/02.alignment.nes",
     "sprite_hit_tests_2005.10.05/03.corners.nes",

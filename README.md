@@ -29,7 +29,7 @@
 
 ### PPU
 - Dot-accurate **2C02**: registers, scrolling, background and sprites (8x8/8x16, sprite 0 hit, overflow), NMI/VBL timing,
-  RGBA framebuffer. Passes Blargg's `ppu_vbl_nmi` and `sprite_hit_tests`; 115 of 121 judged Blargg ROMs pass in total
+  RGBA framebuffer. Passes Blargg's `ppu_vbl_nmi` and `sprite_hit_tests`; 119 of 121 judged Blargg ROMs pass in total
   (`cargo test --test blargg -- --nocapture`).
 - OAM DMA, `Nes::run_frame()` / `framebuffer()` as the entry point for a frontend.
 

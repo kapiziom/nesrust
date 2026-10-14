@@ -156,6 +156,11 @@ impl Apu {
         self.dmc.take_dma_request()
     }
 
+    /// The fetch just taken was triggered by a $4015 write: it costs 3 cycles instead of 4 (no alignment).
+    pub fn dmc_dma_is_load(&self) -> bool {
+        self.dmc.dma_is_load()
+    }
+
     pub fn load_dmc_sample_byte(&mut self, byte: u8) {
         self.dmc.load_sample_byte(byte);
     }

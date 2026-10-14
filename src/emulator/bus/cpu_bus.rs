@@ -44,6 +44,11 @@ pub trait CpuBus {
         None
     }
 
+    /// The fetch returned by `take_dmc_dma` was started by a $4015 write (3 cycles, no alignment cycle).
+    fn dmc_dma_is_load(&self) -> bool {
+        false
+    }
+
     fn dmc_dma_done(&mut self, _value: u8) {}
 
     /// Source page of an OAM DMA started by a write to $4014, if one is waiting to be run (taking it clears it).
@@ -149,6 +154,10 @@ impl CpuBus for Bus {
 
     fn take_dmc_dma(&mut self) -> Option<u16> {
         self.apu.take_dmc_dma_request()
+    }
+
+    fn dmc_dma_is_load(&self) -> bool {
+        self.apu.dmc_dma_is_load()
     }
 
     fn dmc_dma_done(&mut self, value: u8) {

@@ -9,8 +9,8 @@ const NTSC_RATES: [u16; 16] = [428, 380, 340, 320, 286, 254, 226, 214, 190, 160,
 const PAL_RATES: [u16; 16] = [398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50];
 
 /// CPU cycles between the output unit emptying the sample buffer and the CPU being asked for the next byte.
-/// Calibrated with Blargg's dmc_dma_during_read4 tests.
-const DMA_REQUEST_DELAY: u8 = 2;
+/// Calibrated with Blargg's dmc_dma_during_read4 and sprdma_and_dmc_dma tests (together with the get/put cycle parity in the CPU).
+const DMA_REQUEST_DELAY: u8 = 3;
 
 #[derive(Clone, Debug)]
 pub struct Dmc {
@@ -30,6 +30,8 @@ pub struct Dmc {
     dma_in_flight: bool,
     dma_requested: bool,
     dma_delay: u8,
+    /// The pending fetch was triggered by a $4015 write rather than by the buffer running empty.
+    load_dma: bool,
 
     // output unit
     shift_register: u8,
@@ -63,6 +65,7 @@ impl Dmc {
             dma_in_flight: false,
             dma_requested: false,
             dma_delay: 0,
+            load_dma: false,
             shift_register: 0,
             bits_remaining: 8,
             silent: true,
@@ -98,6 +101,7 @@ impl Dmc {
             self.bytes_remaining = 0;
         } else if self.bytes_remaining == 0 {
             self.restart();
+            self.load_dma = self.buffer.is_none();
         }
     }
 
@@ -155,8 +159,14 @@ impl Dmc {
         std::mem::take(&mut self.dma_requested).then_some(self.current_address)
     }
 
+    /// Whether the fetch handed out last was started by a $4015 write (a "load" DMA, which needs no alignment cycle).
+    pub fn dma_is_load(&self) -> bool {
+        self.load_dma
+    }
+
     pub fn load_sample_byte(&mut self, byte: u8) {
         self.dma_in_flight = false;
+        self.load_dma = false;
         self.buffer = Some(byte);
         self.current_address = if self.current_address == 0xFFFF { 0x8000 } else { self.current_address + 1 };
         self.bytes_remaining = self.bytes_remaining.saturating_sub(1);
@@ -338,6 +348,20 @@ mod tests {
         dmc.set_enabled(true);
 
         assert_eq!(dmc.bytes_remaining, remaining);
+    }
+
+    #[test]
+    fn a_fetch_started_by_a_4015_write_is_a_load_dma_and_a_refill_is_not() {
+        let mut dmc = Dmc::default();
+        dmc.write(3, 1);
+        dmc.set_enabled(true);
+        assert!(dmc.dma_is_load(), "the buffer was empty when the channel was enabled");
+
+        dmc.load_sample_byte(0x55);
+        assert!(!dmc.dma_is_load(), "the flag is consumed by the fetch");
+
+        dmc.set_enabled(true); // still playing: nothing restarts
+        assert!(!dmc.dma_is_load());
     }
 
     #[test]

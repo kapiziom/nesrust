@@ -147,22 +147,63 @@ impl<B: CpuBus> CPU<B> {
         true
     }
 
-    /// $4014 OAM DMA: 256 read/write pairs stall the CPU for 513 cycles, 514 when it starts on an odd cycle.
-    /// https://www.nesdev.org/wiki/DMA#OAM_DMA
+    /// $4014 OAM DMA: a halt cycle, an alignment cycle when needed, then 256 get/put pairs (513 or 514 cycles).
+    /// A DMC sample fetch that arrives meanwhile shares its halt, dummy and alignment cycles with the copy and only
+    /// costs the cycle of its own read plus one alignment cycle for the copy (usually 2 extra cycles).
+    /// https://www.nesdev.org/wiki/DMA#DMC_DMA_during_OAM_DMA
     fn run_oam_dma(&mut self, page: u8) {
+        enum Oam {
+            Halt,
+            Read,
+            Write(u8),
+            Done,
+        }
+
         // The decision whether an interrupt is taken after the STA that started the DMA was made before the DMA,
         // so interrupts that arrive during it wait for the next instruction.
         let seen_before_dma = self.interrupt_lines_seen();
-        let odd_cycle = self.cycles & 1 == 0;
 
-        self.tick(); // halt cycle
-        if odd_cycle {
-            self.tick(); // alignment cycle
-        }
+        let mut oam = Oam::Halt;
+        let mut offset = 0u16;
+        // sample address of a DMC fetch in progress and the number of its cycles that have passed
+        let mut dmc: Option<(u16, u8)> = None;
 
-        for offset in 0..=0xFFu16 {
-            let value = self.read((page as u16) << 8 | offset);
-            self.write(0x2004, value);
+        while !matches!(oam, Oam::Done) || dmc.is_some() {
+            // "get" cycles are the odd ones: the first read of the copy always lands on one
+            let get_cycle = (self.cycles + 1) & 1 == 1;
+
+            if dmc.is_none() {
+                dmc = self.bus.take_dmc_dma().map(|address| (address, 0));
+            }
+
+            if let Some((sample_address, step)) = dmc {
+                // halt (0) and dummy (1) cycles, then an alignment cycle if the next one is not a get
+                if step >= 2 && (get_cycle || self.bus.dmc_dma_is_load()) {
+                    let byte = self.read_cycle(sample_address);
+                    self.bus.dmc_dma_done(byte);
+                    dmc = None;
+                    continue;
+                }
+                dmc = Some((sample_address, step + 1));
+            }
+
+            match oam {
+                Oam::Halt => {
+                    self.tick();
+                    oam = Oam::Read;
+                }
+                Oam::Read if get_cycle => {
+                    let value = self.read_cycle((page as u16) << 8 | offset);
+                    oam = Oam::Write(value);
+                }
+                Oam::Write(value) => {
+                    self.write(0x2004, value);
+                    offset += 1;
+                    oam = if offset > 0xFF { Oam::Done } else { Oam::Read };
+                }
+                // alignment, or the DMC finishing after the copy has ended
+                Oam::Read | Oam::Done => self.tick(),
+            }
         }
 
         self.restore_interrupt_lines_seen(seen_before_dma);
@@ -370,7 +411,7 @@ impl<B: CpuBus> CPU<B> {
 
         self.read_cycle(cpu_address); // halt cycle
         repeat(self); // dummy cycle
-        if self.cycles & 1 == 0 {
+        if self.cycles & 1 == 1 && !self.bus.dmc_dma_is_load() {
             repeat(self); // alignment: the sample is read on a "get" cycle
         }
         let byte = self.read_cycle(sample_address);
