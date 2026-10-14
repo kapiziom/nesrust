@@ -150,7 +150,10 @@ impl<B: CpuBus> CPU<B> {
     /// $4014 OAM DMA: 256 read/write pairs stall the CPU for 513 cycles, 514 when it starts on an odd cycle.
     /// https://www.nesdev.org/wiki/DMA#OAM_DMA
     fn run_oam_dma(&mut self, page: u8) {
-        let odd_cycle = self.cycles & 1 == 1;
+        // The decision whether an interrupt is taken after the STA that started the DMA was made before the DMA,
+        // so interrupts that arrive during it wait for the next instruction.
+        let seen_before_dma = self.interrupt_lines_seen();
+        let odd_cycle = self.cycles & 1 == 0;
 
         self.tick(); // halt cycle
         if odd_cycle {
@@ -161,6 +164,8 @@ impl<B: CpuBus> CPU<B> {
             let value = self.read((page as u16) << 8 | offset);
             self.write(0x2004, value);
         }
+
+        self.restore_interrupt_lines_seen(seen_before_dma);
     }
 
     fn execute(&mut self, op: &OperationCode) {
@@ -370,6 +375,15 @@ impl<B: CpuBus> CPU<B> {
         }
         let byte = self.read_cycle(sample_address);
         self.bus.dmc_dma_done(byte);
+    }
+
+    /// The NMI and IRQ requests as seen at the end of the previous cycle (what the next poll would act on).
+    pub (super) fn interrupt_lines_seen(&self) -> (bool, bool) {
+        (self.nmi_ready, self.irq_ready)
+    }
+
+    pub (super) fn restore_interrupt_lines_seen(&mut self, seen: (bool, bool)) {
+        (self.nmi_ready, self.irq_ready) = seen;
     }
 
     /// Samples the interrupt lines at the end of a cycle.

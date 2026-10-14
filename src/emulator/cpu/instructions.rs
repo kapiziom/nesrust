@@ -153,6 +153,9 @@ impl<B: CpuBus> CPU<B> {
             return;
         }
 
+        // what the CPU had seen of the interrupt lines before the extra cycle of the taken branch
+        let seen_before = self.interrupt_lines_seen();
+
         self.read(self.program_counter); // dummy read of the next opcode
 
         let next_instruction = self.program_counter;
@@ -161,6 +164,10 @@ impl<B: CpuBus> CPU<B> {
         if (next_instruction & 0xFF00) != (target & 0xFF00) {
             // the low byte is already corrected, the high byte is not yet
             self.read((next_instruction & 0xFF00) | (target & 0x00FF));
+        } else {
+            // A taken branch that stays on its page ignores an interrupt that arrives in its last cycles:
+            // the next instruction runs first. https://www.nesdev.org/wiki/CPU_interrupts
+            self.restore_interrupt_lines_seen(seen_before);
         }
 
         self.program_counter = target;

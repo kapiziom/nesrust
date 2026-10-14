@@ -38,8 +38,9 @@ impl<B: CpuBus> CPU<B> {
 
         self.insert_flag(CpuFlags::INTERRUPT_DISABLE);
 
-        // an NMI that arrives while BRK/IRQ is being entered takes over the vector fetch
-        let vector = if interrupt.vector_addr != NMI.vector_addr && self.nmi_latched {
+        // An NMI that was already seen four cycles into BRK/IRQ takes over the vector fetch ("hijacking");
+        // `nmi_ready` is what the CPU saw at the end of the previous cycle.
+        let vector = if interrupt.vector_addr != NMI.vector_addr && self.nmi_ready {
             self.nmi_latched = false;
             self.nmi_ready = false;
             NMI.vector_addr
@@ -50,6 +51,10 @@ impl<B: CpuBus> CPU<B> {
         let low = self.read(vector) as u16;
         let high = self.read(vector.wrapping_add(1)) as u16;
         self.program_counter = (high << 8) | low;
+
+        // the first instruction of the handler always runs before another interrupt can be taken
+        self.nmi_ready = false;
+        self.irq_ready = false;
     }
 
     /// Services an NMI (edge, has priority) or IRQ (level, masked by the I flag) as seen at the end of the previous
