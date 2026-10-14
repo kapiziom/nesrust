@@ -11,8 +11,11 @@ mod mmc1;
 mod mmc2;
 mod mmc3;
 mod nrom;
+mod sunsoft5b;
 mod uxrom;
 mod vrc2_4;
+mod vrc6;
+mod vrc_irq;
 
 use super::ines::{CartridgeError, INesFile};
 #[cfg(test)]
@@ -46,6 +49,12 @@ pub trait Mapper {
 
     /// Called once per CPU cycle (MMC1 ignores back-to-back writes, MMC3 filters A12 glitches).
     fn cpu_cycle(&mut self) {}
+
+    /// Level of the mapper's own sound hardware, to be added to the APU mixer output (roughly 0.0 to 0.5, where
+    /// the two APU pulse channels at full volume give 0.26). Clocked from `cpu_cycle`.
+    fn audio_output(&self) -> f32 {
+        0.0
+    }
 
     /// Battery-backed PRG-RAM contents to persist, if the board has any.
     fn battery_ram(&self) -> Option<&[u8]> {
@@ -116,6 +125,7 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         9 | 10 => Box::new(mmc2::Mmc2::new(file)),
         11 | 66 | 79 | 87 | 140 | 152 | 180 => Box::new(discrete::Discrete::new(file)),
         21 | 22 | 23 | 25 => Box::new(vrc2_4::Vrc2_4::new(file)),
+        24 | 26 => Box::new(vrc6::Vrc6::new(file)),
         34 => Box::new(bnrom::Bnrom::new(file)),
         69 => Box::new(fme7::Fme7::new(file)),
         71 => Box::new(camerica::Camerica::new(file)),
@@ -248,8 +258,8 @@ mod tests {
         assert!(matches!(create(file(5, 2, 1)), Err(CartridgeError::UnsupportedMapper(5))));
     }
 
-    const ALL_MAPPERS: [u16; 23] =
-        [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 25, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206];
+    const ALL_MAPPERS: [u16; 25] =
+        [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.
     fn fingerprint(mapper: &mut dyn Mapper) -> Vec<u8> {

@@ -1,7 +1,8 @@
 //! Mapper 69 (Sunsoft FME-7 / 5A / 5B): a command/parameter register pair selects
 //! 1KB CHR banks, 8KB PRG banks (also at $6000, optionally RAM), mirroring and a CPU-cycle IRQ counter.
-//! The expansion sound of the 5B is not emulated. https://www.nesdev.org/wiki/Sunsoft_FME-7
+//! The 5B variant also has expansion sound (see `sunsoft5b.rs`). https://www.nesdev.org/wiki/Sunsoft_FME-7
 
+use super::sunsoft5b::Sunsoft5bAudio;
 use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
@@ -26,6 +27,8 @@ pub struct Fme7 {
     irq_enabled: bool,
     counter_enabled: bool,
     irq_pending: bool,
+
+    audio: Sunsoft5bAudio,
 }
 
 impl Fme7 {
@@ -42,6 +45,7 @@ impl Fme7 {
             irq_enabled: false,
             counter_enabled: false,
             irq_pending: false,
+            audio: Sunsoft5bAudio::default(),
         }
     }
 
@@ -110,6 +114,8 @@ impl Mapper for Fme7 {
             }
             0x8000..=0x9FFF => self.command = data & 0x0F,
             0xA000..=0xBFFF => self.write_parameter(data),
+            0xC000..=0xDFFF => self.audio.select(data),
+            0xE000..=0xFFFF => self.audio.write(data),
             _ => {}
         }
     }
@@ -133,6 +139,8 @@ impl Mapper for Fme7 {
     }
 
     fn cpu_cycle(&mut self) {
+        self.audio.tick();
+
         if !self.counter_enabled {
             return;
         }
@@ -143,6 +151,10 @@ impl Mapper for Fme7 {
         if wrapped && self.irq_enabled {
             self.irq_pending = true;
         }
+    }
+
+    fn audio_output(&self) -> f32 {
+        self.audio.output()
     }
 
     fn battery_ram(&self) -> Option<&[u8]> {

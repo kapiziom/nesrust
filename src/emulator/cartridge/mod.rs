@@ -100,6 +100,11 @@ impl Cartridge {
         self.mapper.irq_pending()
     }
 
+    /// Sound produced by the cartridge itself (VRC6, Sunsoft 5B, ...), added to the APU output.
+    pub fn audio_output(&self) -> f32 {
+        self.mapper.audio_output()
+    }
+
     /// Must be called once per CPU cycle.
     pub fn cpu_cycle(&mut self) {
         self.mapper.cpu_cycle();
@@ -144,7 +149,7 @@ mod tests {
 
     #[test]
     fn supported_mappers_load() {
-        for mapper in [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 25, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206] {
+        for mapper in [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206] {
             assert!(Cartridge::from_bytes(&nes_file(mapper)).is_ok(), "mapper {mapper}");
         }
     }

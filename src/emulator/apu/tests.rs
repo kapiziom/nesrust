@@ -374,3 +374,20 @@ fn a_pal_pulse_channel_plays_a_lower_note_for_the_same_register_value() {
     assert!((ntsc - 440.4).abs() < 3.0, "NTSC {ntsc}");
     assert!((pal - 409.1).abs() < 3.0, "PAL: 1662607 / (16 * 254) = 409.1 Hz, measured {pal}");
 }
+
+#[test]
+fn expansion_audio_from_the_cartridge_is_added_to_the_mix() {
+    let mut silent = Apu::new(48_000);
+    let mut with_expansion = Apu::new(48_000);
+    for _ in 0..20_000 {
+        silent.tick();
+        with_expansion.tick_with_expansion(0.2);
+    }
+
+    // the output filters remove the constant (DC) part over time, but the first samples show the added level
+    let first_silent = drain(&mut silent);
+    let first_expansion = drain(&mut with_expansion);
+
+    let peak = |samples: &[f32]| samples.iter().cloned().fold(f32::MIN, f32::max);
+    assert!(peak(&first_expansion) - peak(&first_silent) > 0.1);
+}

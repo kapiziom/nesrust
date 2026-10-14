@@ -136,7 +136,7 @@ impl Bus {
         self.run_ppu(after);
         // the APU works at the end of the cycle, after the CPU's access: a register write is seen by it in that
         // same cycle
-        self.apu.tick();
+        self.apu.tick_with_expansion(self.cartridge.audio_output());
 
         // the CPU's NMI edge detector looks at the line at the end of every cycle
         if self.ppu.take_nmi() {

@@ -11,7 +11,7 @@
 
 ### Cartridge
 - **iNES and NES 2.0** parsing (malformed files return errors, never panic).
-- Mappers: **0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 9/10 (MMC2/MMC4), 11, 66, 79, 87, 140, 152, 180 (simple discrete boards), 21/22/23/25 (VRC2/VRC4), 34 (BNROM/NINA-001), 69 (FME-7, no expansion audio), 71 (Camerica), 206 (Namco 108)**.
+- Mappers: **0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 9/10 (MMC2/MMC4), 11, 66, 79, 87, 140, 152, 180 (simple discrete boards), 21/22/23/25 (VRC2/VRC4), 24/26 (VRC6 with expansion audio), 34 (BNROM/NINA-001), 69 (FME-7 with Sunsoft 5B audio), 71 (Camerica), 206 (Namco 108)**.
 - PRG-RAM, CHR-RAM, battery-backed RAM access for saves, mapper-controlled mirroring and IRQ.
 
 ### Bus

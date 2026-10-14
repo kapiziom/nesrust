@@ -2,14 +2,13 @@
 //! The four mapper numbers are the same chip wired with its two register-select lines connected to different CPU
 //! address lines. https://www.nesdev.org/wiki/VRC2_and_VRC4
 
+use super::vrc_irq::VrcIrq;
 use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const PRG_8K: usize = 8 * 1024;
 const CHR_1K: usize = 1024;
-/// PPU dots per scanline: the IRQ prescaler counts CPU cycles x 3 against this.
-const PRESCALER_RELOAD: i16 = 341;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Vrc2_4 {
@@ -26,13 +25,7 @@ pub struct Vrc2_4 {
     swap_prg: bool,
     ram_enabled: bool,
 
-    irq_latch: u8,
-    irq_counter: u8,
-    irq_cycle_mode: bool,
-    irq_enabled: bool,
-    irq_enable_after_ack: bool,
-    irq_pending: bool,
-    prescaler: i16,
+    irq: VrcIrq,
 }
 
 impl Vrc2_4 {
@@ -47,13 +40,7 @@ impl Vrc2_4 {
             chr_banks: [0; 8],
             swap_prg: false,
             ram_enabled: false,
-            irq_latch: 0,
-            irq_counter: 0,
-            irq_cycle_mode: false,
-            irq_enabled: false,
-            irq_enable_after_ack: false,
-            irq_pending: false,
-            prescaler: PRESCALER_RELOAD,
+            irq: VrcIrq::default(),
         }
     }
 
@@ -102,36 +89,6 @@ impl Vrc2_4 {
             *bank = (*bank & 0x00F) | ((data as u16 & 0x1F) << 4);
         }
     }
-
-    fn write_irq_register(&mut self, register: u16, data: u8) {
-        match register {
-            0 => self.irq_latch = (self.irq_latch & 0xF0) | (data & 0x0F),
-            1 => self.irq_latch = (self.irq_latch & 0x0F) | (data << 4),
-            2 => {
-                self.irq_enable_after_ack = data & 0x01 != 0;
-                self.irq_enabled = data & 0x02 != 0;
-                self.irq_cycle_mode = data & 0x04 != 0;
-                self.irq_pending = false;
-                if self.irq_enabled {
-                    self.irq_counter = self.irq_latch;
-                    self.prescaler = PRESCALER_RELOAD;
-                }
-            }
-            _ => {
-                self.irq_pending = false;
-                self.irq_enabled = self.irq_enable_after_ack;
-            }
-        }
-    }
-
-    fn clock_irq_counter(&mut self) {
-        if self.irq_counter == 0xFF {
-            self.irq_counter = self.irq_latch;
-            self.irq_pending = true;
-        } else {
-            self.irq_counter += 1;
-        }
-    }
 }
 
 impl Mapper for Vrc2_4 {
@@ -172,7 +129,7 @@ impl Mapper for Vrc2_4 {
             0xB000..=0xEFFF => self.write_chr_register(addr, data),
             0xF000..=0xFFFF => {
                 let register = self.register(addr);
-                self.write_irq_register(register, data);
+                self.irq.write(register, data);
             }
             _ => {}
         }
@@ -191,24 +148,11 @@ impl Mapper for Vrc2_4 {
     }
 
     fn irq_pending(&self) -> bool {
-        self.irq_pending
+        self.irq.pending()
     }
 
     fn cpu_cycle(&mut self) {
-        if !self.irq_enabled {
-            return;
-        }
-
-        if self.irq_cycle_mode {
-            self.clock_irq_counter();
-        } else {
-            // scanline mode: one count per 341 PPU dots = 113.67 CPU cycles
-            self.prescaler -= 3;
-            if self.prescaler <= 0 {
-                self.prescaler += PRESCALER_RELOAD;
-                self.clock_irq_counter();
-            }
-        }
+        self.irq.tick();
     }
 
     fn battery_ram(&self) -> Option<&[u8]> {
@@ -319,7 +263,7 @@ mod tests {
         assert!(!m.irq_pending());
         m.cpu_cycle(); // wraps: reload $FD and fire
         assert!(m.irq_pending());
-        assert_eq!(m.irq_counter, 0xFD);
+        assert_eq!(m.irq.counter(), 0xFD);
     }
 
     #[test]

@@ -170,6 +170,11 @@ impl Apu {
 
     /// Advances one CPU cycle.
     pub fn tick(&mut self) {
+        self.tick_with_expansion(0.0);
+    }
+
+    /// Advances one CPU cycle, mixing in the sound of the cartridge's own hardware (see `Mapper::audio_output`).
+    pub fn tick_with_expansion(&mut self, expansion: f32) {
         self.cycle += 1;
         self.irq_line = self.frame_counter.irq_flag() || self.dmc.irq_flag();
 
@@ -198,10 +203,10 @@ impl Apu {
         self.triangle.end_cycle();
         self.noise.end_cycle();
 
-        self.sample();
+        self.sample(expansion);
     }
 
-    fn sample(&mut self) {
+    fn sample(&mut self, expansion: f32) {
         let level = self.mixer.mix(
             self.pulse1.output(),
             self.pulse2.output(),
@@ -210,7 +215,7 @@ impl Apu {
             self.dmc.output(),
         );
 
-        self.accumulator += level as f64;
+        self.accumulator += (level + expansion) as f64;
         self.accumulated += 1;
         self.phase += self.sample_rate as f64;
 
