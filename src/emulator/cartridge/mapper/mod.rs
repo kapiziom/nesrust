@@ -123,7 +123,9 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         4 | 206 => Box::new(mmc3::Mmc3::new(file)),
         7 => Box::new(axrom::Axrom::new(file)),
         9 | 10 => Box::new(mmc2::Mmc2::new(file)),
-        11 | 66 | 79 | 87 | 140 | 152 | 180 => Box::new(discrete::Discrete::new(file)),
+        11 | 66 | 72 | 78 | 79 | 87 | 89 | 92 | 93 | 94 | 97 | 140 | 152 | 180 | 184 | 185 => {
+            Box::new(discrete::Discrete::new(file))
+        }
         21 | 22 | 23 | 25 => Box::new(vrc2_4::Vrc2_4::new(file)),
         24 | 26 => Box::new(vrc6::Vrc6::new(file)),
         34 => Box::new(bnrom::Bnrom::new(file)),
@@ -262,8 +264,11 @@ mod tests {
         assert!(matches!(create(file(5, 2, 1)), Err(CartridgeError::UnsupportedMapper(5))));
     }
 
-    const ALL_MAPPERS: [u16; 25] =
-        [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206];
+    /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
+    const ALL_MAPPERS: &[u16] = &[
+        0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 72, 78, 79, 87, 89, 92, 93, 94, 97, 140,
+        152, 180, 184, 185, 206,
+    ];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.
     fn fingerprint(mapper: &mut dyn Mapper) -> Vec<u8> {
@@ -281,7 +286,7 @@ mod tests {
 
     #[test]
     fn every_mapper_restores_its_registers_and_ram_from_a_save_state() {
-        for id in ALL_MAPPERS {
+        for &id in ALL_MAPPERS {
             let mut original = create(file(id, 16, 16)).unwrap();
             // a mix of register writes, RAM writes and pattern accesses that move the mapper away from power-up
             for (step, addr) in (0x6000u16..=0xFFFF).step_by(0x111).enumerate() {
