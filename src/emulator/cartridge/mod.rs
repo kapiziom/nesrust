@@ -88,12 +88,13 @@ impl Cartridge {
 mod tests {
     use super::*;
 
-    fn nes_file(mapper: u8) -> Vec<u8> {
+    fn nes_file(mapper: u16) -> Vec<u8> {
         let mut data = vec![0; 16 + 16384 + 8192];
         data[0..4].copy_from_slice(b"NES\x1A");
         data[4] = 1;
         data[5] = 1;
-        data[6] = mapper << 4;
+        data[6] = (mapper as u8) << 4;
+        data[7] = mapper as u8 & 0xF0;
         data[16] = 0xA9; // first PRG byte
         data
     }
@@ -112,7 +113,7 @@ mod tests {
 
     #[test]
     fn supported_mappers_load() {
-        for mapper in [0, 1, 2, 3, 4, 7] {
+        for mapper in [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 25, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206] {
             assert!(Cartridge::from_bytes(&nes_file(mapper)).is_ok(), "mapper {mapper}");
         }
     }

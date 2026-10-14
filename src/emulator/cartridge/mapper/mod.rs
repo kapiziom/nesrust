@@ -2,11 +2,17 @@
 //! https://www.nesdev.org/wiki/Mapper
 
 mod axrom;
+mod bnrom;
+mod camerica;
 mod cnrom;
+mod discrete;
+mod fme7;
 mod mmc1;
+mod mmc2;
 mod mmc3;
 mod nrom;
 mod uxrom;
+mod vrc2_4;
 
 use super::ines::{CartridgeError, INesFile};
 #[cfg(test)]
@@ -56,8 +62,14 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         1 => Box::new(mmc1::Mmc1::new(file)),
         2 => Box::new(uxrom::Uxrom::new(file)),
         3 => Box::new(cnrom::Cnrom::new(file)),
-        4 => Box::new(mmc3::Mmc3::new(file)),
+        4 | 206 => Box::new(mmc3::Mmc3::new(file)),
         7 => Box::new(axrom::Axrom::new(file)),
+        9 | 10 => Box::new(mmc2::Mmc2::new(file)),
+        11 | 66 | 79 | 87 | 140 | 152 | 180 => Box::new(discrete::Discrete::new(file)),
+        21 | 22 | 23 | 25 => Box::new(vrc2_4::Vrc2_4::new(file)),
+        34 => Box::new(bnrom::Bnrom::new(file)),
+        69 => Box::new(fme7::Fme7::new(file)),
+        71 => Box::new(camerica::Camerica::new(file)),
         id => return Err(CartridgeError::UnsupportedMapper(id)),
     })
 }

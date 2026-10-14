@@ -15,6 +15,8 @@ pub struct Mmc3 {
     prg_ram: PrgRam,
     chr: Chr,
     board_mirroring: Mirroring,
+    /// Mapper 206 (Namco 108 family): MMC3 banking without PRG/CHR swap modes, mirroring control, PRG-RAM or IRQ.
+    simple: bool,
 
     bank_select: u8,
     registers: [u8; 8],
@@ -33,11 +35,13 @@ pub struct Mmc3 {
 
 impl Mmc3 {
     pub fn new(file: INesFile) -> Self {
+        let simple = file.mapper == 206;
         Mmc3 {
             prg_rom: file.prg_rom,
-            prg_ram: PrgRam::new(file.prg_ram_size, file.battery),
+            prg_ram: PrgRam::new(if simple { 0 } else { file.prg_ram_size }, file.battery),
             chr: Chr::new(file.chr_rom, file.chr_ram_size),
             board_mirroring: file.mirroring,
+            simple,
             bank_select: 0,
             registers: [0, 2, 4, 5, 6, 7, 0, 1],
             horizontal_mirroring: file.mirroring != Mirroring::Vertical,
@@ -59,12 +63,13 @@ impl Mmc3 {
 
     fn prg_index(&self, addr: u16) -> usize {
         let banks = self.prg_banks();
-        let swapped = self.bank_select & 0x40 != 0;
+        let swapped = !self.simple && self.bank_select & 0x40 != 0;
+        let mask = if self.simple { 0x0F } else { 0x3F };
 
         let bank = match ((addr as usize - 0x8000) / PRG_BANK_SIZE, swapped) {
-            (0, false) | (2, true) => self.registers[6] as usize & 0x3F,
+            (0, false) | (2, true) => self.registers[6] as usize & mask,
             (0, true) | (2, false) => banks.saturating_sub(2),
-            (1, _) => self.registers[7] as usize & 0x3F,
+            (1, _) => self.registers[7] as usize & mask,
             _ => banks - 1,
         };
 
@@ -76,16 +81,19 @@ impl Mmc3 {
         let mut addr = addr as usize & 0x1FFF;
 
         // CHR inversion swaps the two 4KB halves
-        if self.bank_select & 0x80 != 0 {
+        if !self.simple && self.bank_select & 0x80 != 0 {
             addr ^= 0x1000;
         }
 
+        // the Namco 108 only has six CHR address lines
+        let mask = if self.simple { 0x3F } else { 0xFF };
+
         let bank = if addr < 0x1000 {
             // R0 and R1 are 2KB banks: the low bit is ignored and the odd half follows the even one
-            let register = self.registers[addr / 0x800] as usize & !1;
+            let register = self.registers[addr / 0x800] as usize & mask & !1;
             register + (addr % 0x800) / CHR_BANK_SIZE
         } else {
-            self.registers[2 + (addr - 0x1000) / CHR_BANK_SIZE] as usize
+            self.registers[2 + (addr - 0x1000) / CHR_BANK_SIZE] as usize & mask
         };
 
         bank * CHR_BANK_SIZE + (addr % CHR_BANK_SIZE)
@@ -106,6 +114,10 @@ impl Mmc3 {
 
     /// The counter is clocked by a filtered rising edge of PPU A12 (sprites at $1000, background at $0000).
     fn watch_a12(&mut self, addr: u16) {
+        if self.simple {
+            return;
+        }
+
         let a12 = addr & 0x1000 != 0;
 
         if a12 && !self.last_a12 && self.a12_low_cycles >= A12_LOW_CYCLES_REQUIRED {
@@ -130,6 +142,10 @@ impl Mapper for Mmc3 {
 
     fn cpu_write(&mut self, addr: u16, data: u8) {
         let even = addr & 1 == 0;
+
+        if self.simple && !(0x8000..=0x9FFF).contains(&addr) {
+            return;
+        }
 
         match addr {
             0x6000..=0x7FFF => {
@@ -173,8 +189,8 @@ impl Mapper for Mmc3 {
     }
 
     fn mirroring(&self) -> Mirroring {
-        if self.board_mirroring == Mirroring::FourScreen {
-            Mirroring::FourScreen
+        if self.simple || self.board_mirroring == Mirroring::FourScreen {
+            self.board_mirroring
         } else if self.horizontal_mirroring {
             Mirroring::Horizontal
         } else {
@@ -215,6 +231,42 @@ mod tests {
     fn select(m: &mut Mmc3, register: u8, bank_select_flags: u8, value: u8) {
         m.cpu_write(0x8000, register | bank_select_flags);
         m.cpu_write(0x8001, value);
+    }
+
+    fn namco108() -> Mmc3 {
+        Mmc3::new(file(206, 16, 8)) // 32 PRG units of 8KB, 64 CHR units of 1KB
+    }
+
+    #[test]
+    fn namco_108_has_no_swap_modes_and_masks_the_bank_numbers() {
+        let mut m = namco108();
+        select(&mut m, 6, 0x40, 0x15); // swap flag ignored, bank number limited to 4 bits
+        select(&mut m, 7, 0x80, 9);
+        select(&mut m, 0, 0x80, 0x45); // CHR inversion ignored, 6-bit 2KB bank: 0x05 & !1 = 4
+
+        assert_eq!(m.cpu_read(0x8000), Some(5));
+        assert_eq!(m.cpu_read(0xA000), Some(9));
+        assert_eq!(m.cpu_read(0xC000), Some(30));
+        assert_eq!(m.ppu_read(0x0000), 4);
+        assert_eq!(m.ppu_read(0x0400), 5);
+    }
+
+    #[test]
+    fn namco_108_ignores_mirroring_ram_and_irq_registers() {
+        let mut m = namco108();
+        m.cpu_write(0xA000, 1);
+        m.cpu_write(0x6000, 0x42);
+        m.cpu_write(0xC000, 0);
+        m.cpu_write(0xC001, 0);
+        m.cpu_write(0xE001, 0);
+
+        assert_eq!(m.mirroring(), Mirroring::Vertical, "fixed by the board");
+        assert_eq!(m.cpu_read(0x6000), None);
+        for _ in 0..10 {
+            m.ppu_read(0x0000);
+            m.ppu_read(0x1000);
+        }
+        assert!(!m.irq_pending());
     }
 
     #[test]
