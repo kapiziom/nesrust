@@ -27,6 +27,9 @@ const MASK_SPRITES_LEFT: u8 = 0x04;
 const MASK_BACKGROUND: u8 = 0x08;
 const MASK_SPRITES: u8 = 0x10;
 
+/// Frames after which a bit of the I/O latch that nobody refreshed has decayed to 0 (about 0.6 s).
+const LATCH_DECAY_FRAMES: u64 = 36;
+
 const STATUS_SPRITE_OVERFLOW: u8 = 0x20;
 const STATUS_SPRITE_ZERO_HIT: u8 = 0x40;
 const STATUS_VBLANK: u8 = 0x80;
@@ -48,6 +51,8 @@ pub struct PPU {
     read_buffer: u8,
     /// Last value on the PPU's I/O bus (returned by reads of write-only registers).
     io_latch: u8,
+    /// The frame in which each bit of `io_latch` was last driven.
+    latch_stamps: [u64; 8],
 
     // memory
     vram: [u8; 4096],
@@ -79,6 +84,8 @@ pub struct PPU {
     found_sprites: [[u8; 4]; 8],
     found_count: usize,
     found_sprite_zero: bool,
+    /// The dot of the current scanline at which the sprite evaluation notices a ninth sprite.
+    overflow_at_dot: Option<u16>,
     /// Sprite units for the scanline being drawn.
     sprites: [Sprite; 8],
     sprite_count: usize,
@@ -113,6 +120,7 @@ impl PPU {
             write_latch: false,
             read_buffer: 0,
             io_latch: 0,
+            latch_stamps: [0; 8],
             vram: [0; 4096],
             palette_ram: [0; 32],
             oam: [0; 256],
@@ -134,6 +142,7 @@ impl PPU {
             found_sprites: [[0xFF; 4]; 8],
             found_count: 0,
             found_sprite_zero: false,
+            overflow_at_dot: None,
             sprites: [Sprite::default(); 8],
             sprite_count: 0,
             palette: Palette::default(),
@@ -216,39 +225,64 @@ impl PPU {
 
     // ---- CPU-facing registers ($2000-$2007) --------------------------------------------------------------------
 
+    /// The I/O latch with the bits that were not refreshed for too long dropped.
+    fn latch(&mut self) -> u8 {
+        for bit in 0..8 {
+            if self.frame.saturating_sub(self.latch_stamps[bit]) >= LATCH_DECAY_FRAMES {
+                self.io_latch &= !(1 << bit);
+            }
+        }
+        self.io_latch
+    }
+
+    /// Drives the bits in `driven` of the I/O latch with `value` (and refreshes them).
+    fn fill_latch(&mut self, value: u8, driven: u8) {
+        self.io_latch = (self.io_latch & !driven) | (value & driven);
+        for bit in 0..8 {
+            if driven & (1 << bit) != 0 {
+                self.latch_stamps[bit] = self.frame;
+            }
+        }
+    }
+
     /// `register` is the CPU address & 7.
     pub fn read_register(&mut self, register: u16, cartridge: &mut Cartridge) -> u8 {
-        let value = match register & 7 {
+        // the bits of the result that the PPU drives; the rest comes from the (decaying) latch
+        let (value, driven) = match register & 7 {
             // PPUSTATUS: low bits are open bus; reading clears vblank and the write latch
             2 => {
                 if self.scanline == VBLANK_LINE && self.dot == 1 {
                     self.suppress_vblank = true;
                 }
-                let value = (self.status & 0xE0) | (self.io_latch & 0x1F);
+                let value = (self.status & 0xE0) | (self.latch() & 0x1F);
                 self.status &= !STATUS_VBLANK;
                 self.write_latch = false;
                 self.update_nmi();
-                value
+                (value, 0xE0)
             }
             // OAMDATA
             4 => {
-                if self.rendering_active() && (1..=64).contains(&self.dot) {
+                let value = if self.rendering_active() && (1..=64).contains(&self.dot) {
                     0xFF // secondary OAM is being cleared
                 } else {
                     self.oam_read(self.oam_addr)
-                }
+                };
+                (value, 0xFF)
             }
-            // PPUDATA
-            7 => self.read_data(cartridge),
-            _ => self.io_latch,
+            // PPUDATA: palette reads drive only the low 6 bits
+            7 => {
+                let palette = self.v & 0x3FFF >= 0x3F00;
+                (self.read_data(cartridge), if palette { 0x3F } else { 0xFF })
+            }
+            _ => (self.latch(), 0x00),
         };
 
-        self.io_latch = value;
+        self.fill_latch(value, driven);
         value
     }
 
     pub fn write_register(&mut self, register: u16, data: u8, cartridge: &mut Cartridge) {
-        self.io_latch = data;
+        self.fill_latch(data, 0xFF);
 
         match register & 7 {
             0 => {
@@ -311,7 +345,7 @@ impl PPU {
             if self.mask & MASK_GREYSCALE != 0 {
                 colour &= 0x30;
             }
-            (self.io_latch & 0xC0) | colour
+            (self.latch() & 0xC0) | colour
         } else {
             let buffered = self.read_buffer;
             self.read_buffer = self.bus_read(cartridge, address);
@@ -497,6 +531,13 @@ impl PPU {
                 7 => self.increment_coarse_x(),
                 _ => {}
             }
+        }
+
+        if visible {
+            if dot == 65 {
+                self.evaluate_sprites();
+            }
+            self.update_sprite_overflow();
         }
 
         match dot {

@@ -36,21 +36,28 @@ impl PPU {
         if self.ctrl & CTRL_SPRITE_SIZE != 0 { 16 } else { 8 }
     }
 
-    /// Finds the (up to 8) sprites that appear on the next scanline and emulates the hardware's overflow bug.
+    /// Dot 257: the sprites found during this line's evaluation become the units of the next line.
     pub(super) fn prepare_next_scanline_sprites(&mut self, visible: bool) {
-        self.found_sprites = [[0xFF; 4]; 8];
-        self.found_count = 0;
-        self.found_sprite_zero = false;
-
-        if visible {
-            self.evaluate_sprites();
+        if !visible {
+            // the pre-render line does not evaluate: the first scanline has no sprites
+            self.found_sprites = [[0xFF; 4]; 8];
+            self.found_count = 0;
+            self.found_sprite_zero = false;
         }
 
         // the fetches of dots 257-320 fill the sprite units for the next scanline
         self.sprite_count = self.found_count;
     }
 
-    fn evaluate_sprites(&mut self) {
+    /// Finds the (up to 8) sprites that appear on the next scanline and emulates the hardware's overflow bug.
+    /// The PPU reads one OAM byte every two dots from dot 65; the dot at which a ninth sprite is noticed
+    /// (the overflow flag is set then) follows from how many bytes it had to read before.
+    pub(super) fn evaluate_sprites(&mut self) {
+        self.found_sprites = [[0xFF; 4]; 8];
+        self.found_count = 0;
+        self.found_sprite_zero = false;
+        self.overflow_at_dot = None;
+
         let height = self.sprite_height();
         let line = self.scanline as i16;
         let in_range = |y: u8| {
@@ -58,6 +65,7 @@ impl PPU {
             (0..height).contains(&row)
         };
 
+        let mut dot = 65u16;
         let mut sprite = 0usize;
 
         while sprite < 64 && self.found_count < 8 {
@@ -66,6 +74,9 @@ impl PPU {
                 self.found_sprites[self.found_count].copy_from_slice(&self.oam[base..base + 4]);
                 self.found_sprite_zero |= sprite == 0;
                 self.found_count += 1;
+                dot += 8; // all four bytes are copied
+            } else {
+                dot += 2;
             }
             sprite += 1;
         }
@@ -75,11 +86,20 @@ impl PPU {
         let mut byte = 0usize;
         while self.found_count == 8 && sprite < 64 {
             if in_range(self.oam[(sprite * 4 + byte) & 0xFF]) {
-                self.status |= STATUS_SPRITE_OVERFLOW;
+                self.overflow_at_dot = Some(dot + 1);
                 break;
             }
             sprite += 1;
             byte = (byte + 1) & 3;
+            dot += 2;
+        }
+    }
+
+    /// Sets the overflow flag on the dot at which the evaluation found a ninth sprite.
+    pub(super) fn update_sprite_overflow(&mut self) {
+        if self.overflow_at_dot == Some(self.dot) {
+            self.status |= STATUS_SPRITE_OVERFLOW;
+            self.overflow_at_dot = None;
         }
     }
 

@@ -781,3 +781,42 @@ fn the_pal_pre_render_line_is_311() {
     assert_eq!(ppu.status, 0);
     assert_eq!(ppu.region(), Region::Pal);
 }
+
+// ---- I/O latch decay ------------------------------------------------------------------------------------------
+
+#[test]
+fn the_io_latch_keeps_its_bits_for_a_while_and_then_they_decay_to_zero() {
+    let (mut ppu, mut cart) = setup();
+    write(&mut ppu, &mut cart, 1, 0xFF);
+
+    assert_eq!(read(&mut ppu, &mut cart, 0), 0xFF, "write-only registers read back the latch");
+
+    ppu.frame += LATCH_DECAY_FRAMES - 1;
+    assert_eq!(read(&mut ppu, &mut cart, 0), 0xFF, "not decayed yet");
+
+    ppu.frame += 1;
+    assert_eq!(read(&mut ppu, &mut cart, 0), 0x00, "36 frames after the last refresh every bit is gone");
+}
+
+#[test]
+fn reading_a_register_refreshes_only_the_bits_it_drives() {
+    let (mut ppu, mut cart) = setup();
+    write(&mut ppu, &mut cart, 1, 0xFF);
+    ppu.frame += LATCH_DECAY_FRAMES - 1;
+
+    ppu.status = STATUS_VBLANK;
+    read(&mut ppu, &mut cart, 2); // drives bits 7-5 only
+
+    ppu.frame += 1;
+    assert_eq!(read(&mut ppu, &mut cart, 0), 0x80, "bit 7 was refreshed by the read; bits 6-5 were driven low; bits 4-0 decayed");
+}
+
+#[test]
+fn ppustatus_low_bits_come_from_the_decaying_latch() {
+    let (mut ppu, mut cart) = setup();
+    write(&mut ppu, &mut cart, 1, 0x1F);
+    assert_eq!(read(&mut ppu, &mut cart, 2) & 0x1F, 0x1F);
+
+    ppu.frame += LATCH_DECAY_FRAMES;
+    assert_eq!(read(&mut ppu, &mut cart, 2) & 0x1F, 0x00);
+}
