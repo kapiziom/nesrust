@@ -275,7 +275,7 @@ mod tests {
         let samples = run(&mut chip, 16 * 2 * 100);
 
         assert!(samples[samples.len() - 16 * 2 * 20..].iter().any(|&s| s > 0.05), "still ramping at the end");
-        assert!(samples.iter().any(|&s| s == 0.0));
+        assert!(samples.contains(&0.0));
     }
 
     #[test]

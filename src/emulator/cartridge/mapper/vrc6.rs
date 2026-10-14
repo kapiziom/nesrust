@@ -101,7 +101,7 @@ impl Saw {
             self.step = (self.step + 1) % 14;
             if self.step == 0 {
                 self.accumulator = 0;
-            } else if self.step % 2 == 0 {
+            } else if self.step.is_multiple_of(2) {
                 self.accumulator = self.accumulator.wrapping_add(self.rate);
             }
         } else {

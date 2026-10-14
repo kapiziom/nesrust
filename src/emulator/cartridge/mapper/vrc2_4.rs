@@ -217,7 +217,7 @@ mod tests {
             m.cpu_write(at(mapper, 0xB000, 2), 0x02);
             m.cpu_write(at(mapper, 0xB000, 3), 0x01);
 
-            assert_eq!(m.ppu_read(0x0800), (0x0A7u16 % 256) as u8, "mapper {mapper}: CHR bank $0A7 wraps to 167");
+            assert_eq!(m.ppu_read(0x0800), 0x0A7u16 as u8, "mapper {mapper}: CHR bank $0A7 wraps to 167");
             assert_eq!(m.ppu_read(0x0400), 0x12, "mapper {mapper}: bank $12 is 1KB unit 18");
         }
     }

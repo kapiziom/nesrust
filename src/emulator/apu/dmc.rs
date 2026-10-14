@@ -275,7 +275,7 @@ mod tests {
         high.set_enabled(true);
         run(&mut high, 54 * 30, &|_| 0xFF);
         assert!(high.output() <= 127);
-        assert_eq!(high.output(), 126 + 0, "126 + 2 would exceed 127, so it stays");
+        assert_eq!(high.output(), 126, "126 + 2 would exceed 127, so it stays");
 
         let mut low = Dmc::default();
         low.write(0, 0x0F);
@@ -288,9 +288,7 @@ mod tests {
 
     #[test]
     fn the_address_wraps_from_ffff_to_8000() {
-        let mut dmc = Dmc::default();
-        dmc.current_address = 0xFFFF;
-        dmc.bytes_remaining = 5;
+        let mut dmc = Dmc { current_address: 0xFFFF, bytes_remaining: 5, ..Dmc::default() };
 
         dmc.load_sample_byte(0);
 

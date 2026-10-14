@@ -239,7 +239,7 @@ fn run_rom(path: &Path) -> Outcome {
         let status = nes.cpu.peek(0x6000);
 
         // check the screen twice a second; verdict text appears once the ROM is done
-        if nes.bus().ppu().frame() % 30 == 0 {
+        if nes.bus().ppu().frame().is_multiple_of(30) {
             let screen = screen_text(&nes);
             if is_alternate_correct_result(path, &screen) {
                 return Outcome::Passed;

@@ -35,8 +35,8 @@ Shell on this machine is Windows (PowerShell / Git Bash); commands are plain car
 ```
 cargo test                    # all unit + integration tests (must stay green)
 cargo test cpu::              # a subset by path
-cargo clippy --all-targets    # lint; new code should not add warnings
-cargo fmt                     # format (rustfmt defaults)
+cargo clippy --all-targets    # lint; currently warning-free, keep it that way
+cargo fmt                     # format (rustfmt.toml: 120 columns, max small-heuristics; keep it clean)
 cargo clean                   # run when target/ grows to several GB (check with: du -sh target); next build is a full rebuild
 cargo run --release --example viewer -- game.nes   # play / inspect a ROM in a window
 ```

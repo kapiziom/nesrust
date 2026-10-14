@@ -238,7 +238,7 @@ fn oam_registers() {
     assert_eq!(ppu.oam_addr, 0x11);
 
     write(&mut ppu, &mut cart, 3, 0x12);
-    assert_eq!(read(&mut ppu, &mut cart, 4), 0xFF & 0xE3, "attribute bits 2-4 read as zero");
+    assert_eq!(read(&mut ppu, &mut cart, 4), 0xE3, "attribute bits 2-4 read as zero");
 }
 
 #[test]

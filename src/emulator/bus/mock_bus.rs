@@ -7,6 +7,12 @@ pub struct MockBus {
     pub cycles: usize,
 }
 
+impl Default for MockBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockBus {
     pub fn new() -> Self {
         Self { memory: [0; 0x10000], nmi_interrupt: None, irq_line: false, cycles: 0 }

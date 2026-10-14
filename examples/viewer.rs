@@ -262,7 +262,7 @@ fn main() {
             }
         } else if !paused && !stopped {
             // with sound the audio buffer is the clock: emulate only while it is running low
-            let wanted = fast_forward || audio.as_ref().map_or(true, |audio| audio.queued() < audio.target_queue);
+            let wanted = fast_forward || audio.as_ref().is_none_or(|audio| audio.queued() < audio.target_queue);
 
             if wanted {
                 let frames = if fast_forward { FAST_FORWARD_FRAMES } else { 1 };
@@ -296,7 +296,7 @@ fn main() {
             }
         }
 
-        for (pixel, rgba) in pixels.iter_mut().zip(nes.framebuffer().chunks_exact(4)) {
+        for (pixel, rgba) in pixels.iter_mut().zip(nes.framebuffer().as_chunks::<4>().0) {
             *pixel = u32::from_be_bytes([0, rgba[0], rgba[1], rgba[2]]);
         }
         if let Err(error) = window.update_with_buffer(&pixels, SCREEN_WIDTH, SCREEN_HEIGHT) {
@@ -351,7 +351,7 @@ fn fail(message: &str) -> ! {
 /// Writes the RGBA framebuffer as a PNG (uncompressed deflate blocks, so no compression crate is needed).
 fn save_png(path: &str, rgba: &[u8]) {
     let mut raw = Vec::with_capacity((SCREEN_WIDTH * 4 + 1) * SCREEN_HEIGHT);
-    for row in rgba.chunks_exact(SCREEN_WIDTH * 4) {
+    for row in rgba.as_chunks::<{ SCREEN_WIDTH * 4 }>().0 {
         raw.push(0); // filter: none
         raw.extend_from_slice(row);
     }

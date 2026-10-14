@@ -584,7 +584,7 @@ mod test {
     fn prepare_test_cpu(program: &[u8]) -> CPU<MockBus> {
         let mut bus = MockBus::new();
 
-        bus.load_program(&program, 0x8000);
+        bus.load_program(program, 0x8000);
 
         let mut cpu = CPU::new(bus);
 

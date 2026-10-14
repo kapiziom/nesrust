@@ -4,6 +4,12 @@ pub struct RAM {
     memory: [u8; 0x800], // 2KB RAM
 }
 
+impl Default for RAM {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RAM {
     pub fn new() -> Self {
         RAM { memory: [0; 0x800] }
