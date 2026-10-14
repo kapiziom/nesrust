@@ -5,6 +5,7 @@
 //!
 //! Keys:  arrows = D-pad   X = A   Z = B   Enter = Start   Right Shift / Backspace = Select
 //!        P = pause   R = reset   Tab (hold) = 4x speed   F12 = screenshot (PNG in the current directory)   Esc = quit
+//!        F5 = save state   F9 = load state (`<rom>.state` next to the ROM)
 //!
 //! The window can be resized by dragging its edges. The audio buffer paces the emulation (if there is no sound
 //! device the window's refresh rate does).
@@ -56,6 +57,7 @@ fn main() {
 
     let mut nes = Nes::new(cartridge);
     let save_path = PathBuf::from(&path).with_extension("sav");
+    let state_path = PathBuf::from(&path).with_extension("state");
     if let Ok(saved) = fs::read(&save_path) {
         nes.cpu.bus.cartridge.load_battery_ram(&saved);
     }
@@ -133,6 +135,21 @@ fn main() {
         if window.is_key_pressed(Key::F12, KeyRepeat::No) {
             screenshots += 1;
             save_png(&format!("{name}-{screenshots}.png"), nes.framebuffer());
+        }
+        if window.is_key_pressed(Key::F5, KeyRepeat::No) {
+            match fs::write(&state_path, nes.save_state()) {
+                Ok(()) => eprintln!("state saved to {}", state_path.display()),
+                Err(error) => eprintln!("cannot save the state: {error}"),
+            }
+        }
+        if window.is_key_pressed(Key::F9, KeyRepeat::No) {
+            match fs::read(&state_path) {
+                Ok(bytes) => match nes.load_state(&bytes) {
+                    Ok(()) => stopped = false,
+                    Err(error) => eprintln!("cannot load the state: {error}"),
+                },
+                Err(error) => eprintln!("cannot read {}: {error}", state_path.display()),
+            }
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             nes.reset();

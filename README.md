@@ -35,7 +35,7 @@
 
 ## 🛠️ To-Do Features
 
-- More mappers, save states, frontend
+- Rewind, gamepad, more mappers (MMC5, VRC6), frontend
 
 ## 📂 Project Structure
 
