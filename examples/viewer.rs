@@ -5,6 +5,7 @@
 //!
 //! Keys:  arrows = D-pad   X = A   Z = B   Enter = Start   Right Shift / Backspace = Select
 //!        P = pause   R = reset   Tab (hold) = 4x speed   F12 = screenshot (PNG in the current directory)   Esc = quit
+//!        Gamepad (any, first to send input wins): D-pad / left stick, East = A, South = B, Start, Select (Back)
 //!        F5 = save state   F9 = load state (`<rom>.state` next to the ROM)   W (hold) = rewind (the last 10 seconds)
 //!
 //! The window can be resized by dragging its edges. The audio buffer paces the emulation (if there is no sound
@@ -18,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, fs, process};
 
+use gilrs::{Axis, Button, EventType, Gilrs};
 use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 use nesrs::emulator::cartridge::Cartridge;
 use nesrs::emulator::controller::Buttons;
@@ -41,6 +43,80 @@ const KEY_MAP: [(Key, Buttons); 9] = [
 const TARGET_FPS: usize = 60;
 const VOLUME: f32 = 0.8;
 const FAST_FORWARD_FRAMES: usize = 4;
+
+/// How far the left stick has to be pushed to count as a D-pad press.
+const STICK_THRESHOLD: f32 = 0.5;
+
+/// Controller state kept up to date from gilrs events; every connected pad can play.
+struct Pad {
+    gilrs: Option<Gilrs>,
+    buttons: Buttons,
+    stick: Buttons,
+}
+
+impl Pad {
+    fn new() -> Self {
+        let gilrs = match Gilrs::new() {
+            Ok(gilrs) => Some(gilrs),
+            Err(error) => {
+                eprintln!("no gamepad support: {error}");
+                None
+            }
+        };
+        Pad { gilrs, buttons: Buttons::empty(), stick: Buttons::empty() }
+    }
+
+    fn nes_button(button: Button) -> Option<Buttons> {
+        Some(match button {
+            Button::East => Buttons::A,
+            Button::South => Buttons::B,
+            Button::Start => Buttons::START,
+            Button::Select => Buttons::SELECT,
+            Button::DPadUp => Buttons::UP,
+            Button::DPadDown => Buttons::DOWN,
+            Button::DPadLeft => Buttons::LEFT,
+            Button::DPadRight => Buttons::RIGHT,
+            _ => return None,
+        })
+    }
+
+    /// Processes the pending events and returns what is held now.
+    fn poll(&mut self) -> Buttons {
+        let Some(gilrs) = self.gilrs.as_mut() else {
+            return Buttons::empty();
+        };
+
+        while let Some(event) = gilrs.next_event() {
+            match event.event {
+                EventType::ButtonPressed(button, _) => {
+                    if let Some(nes) = Self::nes_button(button) {
+                        self.buttons.insert(nes);
+                    }
+                }
+                EventType::ButtonReleased(button, _) => {
+                    if let Some(nes) = Self::nes_button(button) {
+                        self.buttons.remove(nes);
+                    }
+                }
+                EventType::AxisChanged(Axis::LeftStickX, value, _) => {
+                    self.stick.set(Buttons::LEFT, value < -STICK_THRESHOLD);
+                    self.stick.set(Buttons::RIGHT, value > STICK_THRESHOLD);
+                }
+                EventType::AxisChanged(Axis::LeftStickY, value, _) => {
+                    self.stick.set(Buttons::UP, value > STICK_THRESHOLD);
+                    self.stick.set(Buttons::DOWN, value < -STICK_THRESHOLD);
+                }
+                EventType::Disconnected => {
+                    self.buttons = Buttons::empty();
+                    self.stick = Buttons::empty();
+                }
+                _ => {}
+            }
+        }
+
+        self.buttons | self.stick
+    }
+}
 /// Frames of history kept for rewinding (10 seconds at 60 Hz).
 const REWIND_FRAMES: usize = 600;
 const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
@@ -121,6 +197,7 @@ fn main() {
     let mut paused = false;
     let mut stopped = false;
     let mut rewind = Rewind::new(REWIND_FRAMES);
+    let mut pad = Pad::new();
     let mut last_rewind_step = Instant::now();
     let mut frames_counted = 0u32;
     let mut fps_timer = Instant::now();
@@ -165,8 +242,8 @@ fn main() {
             stopped = false;
         }
 
-        let buttons = KEY_MAP.iter().filter(|(key, _)| window.is_key_down(*key)).fold(Buttons::empty(), |all, (_, button)| all | *button);
-        nes.set_buttons(0, buttons);
+        let keyboard = KEY_MAP.iter().filter(|(key, _)| window.is_key_down(*key)).fold(Buttons::empty(), |all, (_, button)| all | *button);
+        nes.set_buttons(0, keyboard | pad.poll());
 
         let fast_forward = window.is_key_down(Key::Tab);
         let mut ran_a_frame = false;
