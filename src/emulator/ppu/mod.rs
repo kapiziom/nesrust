@@ -34,6 +34,17 @@ const STATUS_SPRITE_OVERFLOW: u8 = 0x20;
 const STATUS_SPRITE_ZERO_HIT: u8 = 0x40;
 const STATUS_VBLANK: u8 = 0x80;
 
+/// Dots after a $2007 read during which the read buffer still holds its old value (dmc_dma_during_read4/double_2007_read).
+/// Back-to-back CPU cycles are 3 dots apart (up to 4 on PAL).
+const READ_BUFFER_LOAD_DOTS: u8 = 5;
+
+/// Palette RAM contents measured on a real console at power-up (it is not cleared by reset).
+/// https://www.nesdev.org/wiki/PPU_power_up_state
+const POWER_UP_PALETTE: [u8; 32] = [
+    0x09, 0x01, 0x00, 0x01, 0x00, 0x02, 0x02, 0x0D, 0x08, 0x10, 0x08, 0x24, 0x00, 0x00, 0x04, 0x2C, 0x09, 0x01, 0x34,
+    0x03, 0x00, 0x04, 0x00, 0x14, 0x08, 0x3A, 0x00, 0x02, 0x00, 0x20, 0x2C, 0x08,
+];
+
 pub struct PPU {
     region: Region,
 
@@ -49,6 +60,10 @@ pub struct PPU {
     fine_x: u8,
     write_latch: bool,
     read_buffer: u8,
+    /// The buffer takes a few dots to load: a second $2007 read this soon after the first (a page-crossing
+    /// `LDA $2007,X` or DMC DMA repeating the read) still sees the previous buffer contents.
+    read_buffer_busy: u8,
+    stale_read_buffer: u8,
     /// Last value on the PPU's I/O bus (returned by reads of write-only registers).
     io_latch: u8,
     /// The frame in which each bit of `io_latch` was last driven.
@@ -119,10 +134,12 @@ impl PPU {
             fine_x: 0,
             write_latch: false,
             read_buffer: 0,
+            read_buffer_busy: 0,
+            stale_read_buffer: 0,
             io_latch: 0,
             latch_stamps: [0; 8],
             vram: [0; 4096],
-            palette_ram: [0; 32],
+            palette_ram: POWER_UP_PALETTE,
             oam: [0; 256],
             scanline: 0,
             dot: 0,
@@ -347,8 +364,10 @@ impl PPU {
             }
             (self.latch() & 0xC0) | colour
         } else {
-            let buffered = self.read_buffer;
+            let buffered = if self.read_buffer_busy > 0 { self.stale_read_buffer } else { self.read_buffer };
+            self.stale_read_buffer = buffered;
             self.read_buffer = self.bus_read(cartridge, address);
+            self.read_buffer_busy = READ_BUFFER_LOAD_DOTS;
             buffered
         };
 
@@ -442,6 +461,7 @@ impl PPU {
     pub fn tick(&mut self, cartridge: &mut Cartridge) {
         let visible = self.scanline < SCREEN_HEIGHT as u16;
         let pre_render = self.scanline == self.pre_render_line();
+        self.read_buffer_busy = self.read_buffer_busy.saturating_sub(1);
 
         if self.scanline == VBLANK_LINE && self.dot == 1 {
             if !std::mem::take(&mut self.suppress_vblank) {

@@ -98,17 +98,44 @@ fn ppustatus_low_bits_are_open_bus_and_a_read_clears_vblank_and_the_latch() {
     assert!(!ppu.write_latch);
 }
 
+fn wait_dots(ppu: &mut PPU, cart: &mut Cartridge, dots: u32) {
+    for _ in 0..dots {
+        ppu.tick(cart);
+    }
+}
+
 #[test]
 fn ppudata_reads_are_buffered_by_one() {
     let (mut ppu, mut cart) = setup();
     write_vram(&mut ppu, &mut cart, 0x2000, &[0xAA, 0xBB, 0xCC]);
 
     set_address(&mut ppu, &mut cart, 0x2000);
+    wait_dots(&mut ppu, &mut cart, 12);
 
     assert_eq!(read(&mut ppu, &mut cart, 7), 0x00, "first read returns the stale buffer");
+    wait_dots(&mut ppu, &mut cart, 12);
     assert_eq!(read(&mut ppu, &mut cart, 7), 0xAA);
+    wait_dots(&mut ppu, &mut cart, 12);
     assert_eq!(read(&mut ppu, &mut cart, 7), 0xBB);
+    wait_dots(&mut ppu, &mut cart, 12);
     assert_eq!(read(&mut ppu, &mut cart, 7), 0xCC);
+}
+
+#[test]
+fn a_second_ppudata_read_one_cpu_cycle_later_sees_the_old_buffer_but_still_advances() {
+    let (mut ppu, mut cart) = setup();
+    write_vram(&mut ppu, &mut cart, 0x2000, &[0x11, 0x22, 0x33, 0x44]);
+    set_address(&mut ppu, &mut cart, 0x2000);
+    wait_dots(&mut ppu, &mut cart, 12);
+    read(&mut ppu, &mut cart, 7); // returns the stale buffer; buffer = $11, v = $2001
+    wait_dots(&mut ppu, &mut cart, 12);
+    assert_eq!(read(&mut ppu, &mut cart, 7), 0x11); // buffer = $22, v = $2002
+
+    wait_dots(&mut ppu, &mut cart, 3); // the next CPU cycle
+    assert_eq!(read(&mut ppu, &mut cart, 7), 0x11, "the buffer has not been reloaded yet");
+
+    wait_dots(&mut ppu, &mut cart, 12);
+    assert_eq!(read(&mut ppu, &mut cart, 7), 0x33, "$2001's byte was skipped: the address advanced twice");
 }
 
 #[test]
@@ -134,7 +161,7 @@ fn palette_ram_mirrors_the_sprite_backdrop_entries() {
     assert_eq!(ppu.palette_ram[0x00], 0x30);
     assert_eq!(ppu.palette_ram[palette_index(0x3F14)], 0x12);
     assert_eq!(ppu.palette_ram[0x11], 0x21, "$3F11 is not a mirror of $3F01");
-    assert_eq!(ppu.palette_ram[0x01], 0x00);
+    assert_eq!(ppu.palette_ram[0x01], POWER_UP_PALETTE[0x01], "$3F11 does not touch $3F01");
     assert_eq!(palette_index(0x3F20), 0, "palette RAM repeats every 32 bytes");
 }
 
