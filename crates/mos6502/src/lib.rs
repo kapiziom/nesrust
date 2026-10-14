@@ -22,8 +22,8 @@ const JAM_OPCODES: [u8; 12] = [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0
 /// The "magic" constants ORed into A by the unstable XAA ($8B) and LXA ($AB). They depend on analog effects and
 /// differ between chips; LXA uses $FF like Blargg's instr_test-v5 (written against a real NES) expects, XAA the $EE
 /// of the SingleStepTests reference (which would also give LXA $EE).
-const XAA_MAGIC: u8 = 0xEE;
-const LXA_MAGIC: u8 = 0xFF;
+const DEFAULT_XAA_MAGIC: u8 = 0xEE;
+const DEFAULT_LXA_MAGIC: u8 = 0xFF;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU<B: CpuBus> {
@@ -47,6 +47,9 @@ pub struct CPU<B: CpuBus> {
     irq_ready: bool,
     /// A JAM/KIL opcode froze the processor: only a reset gets it going again.
     jammed: bool,
+    /// The "magic" constant ORed into A by the unstable XAA ($8B) and LXA ($AB); chips differ, so it is a setting.
+    pub xaa_magic: u8,
+    pub lxa_magic: u8,
 }
 
 /// Snapshot of the programmer-visible CPU registers.
@@ -78,6 +81,8 @@ impl<B: CpuBus> CPU<B> {
             irq_sampled: false,
             irq_ready: false,
             jammed: false,
+            xaa_magic: DEFAULT_XAA_MAGIC,
+            lxa_magic: DEFAULT_LXA_MAGIC,
         }
     }
 
@@ -486,11 +491,11 @@ impl<B: CpuBus> CPU<B> {
             }),
             Mnemonic::XAA => {
                 let value = self.read_operand(mode);
-                self.set_register_a((self.register_a | XAA_MAGIC) & self.register_x & value)
+                self.set_register_a((self.register_a | self.xaa_magic) & self.register_x & value)
             }
             Mnemonic::LXA => {
                 let value = self.read_operand(mode);
-                let result = (self.register_a | LXA_MAGIC) & value;
+                let result = (self.register_a | self.lxa_magic) & value;
                 self.register_a = result;
                 self.set_register_x(result);
             }

@@ -15,8 +15,7 @@ use serde::Deserialize;
 const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_rom/singlestep");
 
 /// Opcodes whose reference results are not matched. Everything else must pass.
-/// $AB (LXA) is analog-dependent: the reference ORs $EE into A, Blargg's instr_test (real NES) expects $FF.
-const KNOWN_FAILURES: &[&str] = &["ab"];
+const KNOWN_FAILURES: &[&str] = &[];
 
 #[derive(Deserialize)]
 struct Snapshot {
@@ -166,6 +165,8 @@ fn single_step_tests() {
 
         let cases: Vec<Case> = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let mut cpu = CPU::new(RecordingBus { memory: vec![0; 0x10000], accesses: Vec::new() });
+        // the analog-dependent LXA: the reference ORs $EE into A (the NES default is $FF, which Blargg's tests expect)
+        cpu.lxa_magic = 0xEE;
         let mut failures = Vec::new();
         for case in &cases {
             if let Err(description) = run_case(&mut cpu, case) {
