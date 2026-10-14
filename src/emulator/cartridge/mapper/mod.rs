@@ -1,6 +1,7 @@
 //! Cartridge mappers: the logic on the board that sits between the CPU/PPU buses and the ROM/RAM chips.
 //! https://www.nesdev.org/wiki/Mapper
 
+mod a12_counter;
 mod axrom;
 mod bnrom;
 mod camerica;

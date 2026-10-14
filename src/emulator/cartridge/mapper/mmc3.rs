@@ -3,14 +3,13 @@
 //! swap modes, IRQ or PRG-RAM), TxSROM (118: mirroring from CHR bank bit 7) and TQROM (119: CHR-ROM and CHR-RAM).
 //! https://www.nesdev.org/wiki/MMC3, https://www.nesdev.org/wiki/INES_Mapper_118
 
+use super::a12_counter::A12Counter;
 use super::{mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const PRG_BANK_SIZE: usize = 8 * 1024;
 const CHR_BANK_SIZE: usize = 1024;
-/// A12 must have been low for this many CPU cycles before a rising edge counts (filters the PPU's rapid toggling).
-const A12_LOW_CYCLES_REQUIRED: u8 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Kind {
@@ -57,13 +56,7 @@ pub struct Mmc3 {
     ram_enabled: bool,
     ram_write_protected: bool,
 
-    irq_latch: u8,
-    irq_counter: u8,
-    irq_reload: bool,
-    irq_enabled: bool,
-    irq_pending: bool,
-    last_a12: bool,
-    a12_low_cycles: u8,
+    irq: A12Counter,
 }
 
 impl Mmc3 {
@@ -92,13 +85,7 @@ impl Mmc3 {
             horizontal_mirroring: file.mirroring != Mirroring::Vertical,
             ram_enabled: true,
             ram_write_protected: false,
-            irq_latch: 0,
-            irq_counter: 0,
-            irq_reload: false,
-            irq_enabled: false,
-            irq_pending: false,
-            last_a12: false,
-            a12_low_cycles: 0,
+            irq: A12Counter::default(),
         }
     }
 
@@ -182,35 +169,11 @@ impl Mmc3 {
         }
     }
 
-    fn clock_irq_counter(&mut self) {
-        if self.irq_counter == 0 || self.irq_reload {
-            self.irq_counter = self.irq_latch;
-            self.irq_reload = false;
-        } else {
-            self.irq_counter -= 1;
-        }
-
-        if self.irq_counter == 0 && self.irq_enabled {
-            self.irq_pending = true;
-        }
-    }
-
     /// The counter is clocked by a filtered rising edge of PPU A12 (sprites at $1000, background at $0000).
     fn watch_a12(&mut self, addr: u16) {
-        if self.kind.simple() {
-            return;
+        if !self.kind.simple() {
+            self.irq.watch(addr);
         }
-
-        let a12 = addr & 0x1000 != 0;
-
-        if a12 && !self.last_a12 && self.a12_low_cycles >= A12_LOW_CYCLES_REQUIRED {
-            self.clock_irq_counter();
-        }
-
-        if a12 {
-            self.a12_low_cycles = 0;
-        }
-        self.last_a12 = a12;
     }
 }
 
@@ -248,16 +211,9 @@ impl Mapper for Mmc3 {
                 self.ram_enabled = data & 0x80 != 0;
                 self.ram_write_protected = data & 0x40 != 0;
             }
-            0xC000..=0xDFFF if even => self.irq_latch = data,
-            0xC000..=0xDFFF => {
-                self.irq_counter = 0;
-                self.irq_reload = true;
-            }
-            0xE000..=0xFFFF if even => {
-                self.irq_enabled = false;
-                self.irq_pending = false;
-            }
-            0xE000..=0xFFFF => self.irq_enabled = true,
+            0xC000..=0xDFFF if even => self.irq.set_latch(data),
+            0xC000..=0xDFFF => self.irq.request_reload(),
+            0xE000..=0xFFFF => self.irq.set_enabled(!even),
             _ => {}
         }
     }
@@ -303,13 +259,11 @@ impl Mapper for Mmc3 {
     }
 
     fn irq_pending(&self) -> bool {
-        self.irq_pending
+        self.irq.pending()
     }
 
     fn cpu_cycle(&mut self) {
-        if !self.last_a12 {
-            self.a12_low_cycles = self.a12_low_cycles.saturating_add(1);
-        }
+        self.irq.cpu_cycle();
     }
 
     fn battery_ram(&self) -> Option<&[u8]> {
