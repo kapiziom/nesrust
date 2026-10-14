@@ -2,7 +2,7 @@
 //! four CHR modes with separate bank sets for sprites and background, a scanline IRQ, a multiplier, 1KB of
 //! extension RAM (extra nametable / extended attributes / plain RAM), per-nametable sources including a fill mode,
 //! and two pulse channels plus a PCM channel of expansion audio.
-//! Not emulated: the vertical split screen ($5200-$5202) and the PCM channel's read mode IRQ.
+//! Not emulated: the PCM channel's read mode IRQ.
 //! https://www.nesdev.org/wiki/MMC5
 
 use super::{bank_index, mapper_state, Chr, Mapper, PpuPhase, PrgRam};
@@ -81,6 +81,18 @@ pub struct Mmc5 {
     /// The background tile whose nametable byte was fetched last (extended attribute mode looks it up in ExRAM).
     extended_tile: usize,
 
+    /// $5200: bit 7 enables the split, bit 6 puts it on the right, bits 0-4 are the tile column where it starts.
+    split_control: u8,
+    split_scroll: u8,
+    split_bank: u8,
+    /// Which background tile of the line the next nametable fetch is for (0-33: the two prefetched ones first).
+    tile_counter: u8,
+    /// The tile being fetched comes from the split region: its pattern bytes use the split's CHR bank and row.
+    in_split_tile: bool,
+    split_fine_y: u8,
+    /// The split's palette for the tile being fetched (2 bits, replicated over the attribute byte).
+    split_palette: u8,
+
     irq_target: u8,
     irq_enabled: bool,
     irq_pending: bool,
@@ -116,6 +128,13 @@ impl Mmc5 {
             fill_tile: 0,
             fill_attribute: 0,
             extended_tile: 0,
+            split_control: 0,
+            split_scroll: 0,
+            split_bank: 0,
+            tile_counter: 0,
+            in_split_tile: false,
+            split_fine_y: 0,
+            split_palette: 0,
             irq_target: 0,
             irq_enabled: false,
             irq_pending: false,
@@ -188,6 +207,36 @@ impl Mmc5 {
         (self.nametable_sources >> (((addr >> 10) & 3) * 2)) & 3
     }
 
+    /// The nametable or attribute byte the vertical split screen supplies for this fetch, if it applies.
+    fn split_fetch(&mut self, attribute_fetch: bool) -> Option<u8> {
+        if self.split_control & 0x80 == 0 {
+            return None;
+        }
+
+        if attribute_fetch {
+            return self.in_split_tile.then_some(self.split_palette * 0x55);
+        }
+
+        let column = self.tile_counter;
+        self.tile_counter = self.tile_counter.wrapping_add(1);
+        let threshold = self.split_control & 0x1F;
+        self.in_split_tile = if self.split_control & 0x40 != 0 { column >= threshold } else { column < threshold };
+        if !self.in_split_tile {
+            return None;
+        }
+
+        // the first two tiles of a line are fetched at the end of the line before
+        let line = self.scanline as usize + if column < 2 { 1 } else { 0 };
+        let y = line + self.split_scroll as usize;
+        let row = (y / 8) % 30;
+        let column = (column & 31) as usize;
+        self.split_fine_y = (y & 7) as u8;
+
+        let attribute = self.exram[0x3C0 + (row / 4) * 8 + column / 4];
+        self.split_palette = (attribute >> (((row & 2) << 1) | (column & 2))) & 3;
+        Some(self.exram[row * 32 + column])
+    }
+
     fn write_register(&mut self, addr: u16, data: u8) {
         match addr {
             0x5000..=0x5003 => self.audio.pulse1.write(addr - 0x5000, data),
@@ -222,6 +271,9 @@ impl Mmc5 {
                 self.last_written_set_b = true;
             }
             0x5130 => self.chr_upper = (data & 3) as u16,
+            0x5200 => self.split_control = data,
+            0x5201 => self.split_scroll = data,
+            0x5202 => self.split_bank = data,
             0x5203 => self.irq_target = data,
             0x5204 => self.irq_enabled = data & 0x80 != 0,
             0x5205 => self.multiplicand = data,
@@ -281,6 +333,12 @@ impl Mapper for Mmc5 {
     }
 
     fn ppu_read(&mut self, addr: u16) -> u8 {
+        if self.in_split_tile && self.phase == PpuPhase::Background {
+            // the split region has its own 4KB CHR bank and picks the pixel row itself
+            let row = (addr & !7) | self.split_fine_y as u16;
+            return self.chr.read_banked(4 * 1024, self.split_bank as usize, row as usize & 0xFFF);
+        }
+
         let (bank, size) = self.chr_bank(addr);
         self.chr.read_banked(size, bank, addr as usize & (size - 1))
     }
@@ -291,6 +349,13 @@ impl Mapper for Mmc5 {
     }
 
     fn ppu_phase(&mut self, phase: PpuPhase) {
+        if phase == PpuPhase::Background && self.phase == PpuPhase::Sprites {
+            // the prefetch of the next line's first two tiles starts
+            self.tile_counter = 0;
+        }
+        if phase != PpuPhase::Background {
+            self.in_split_tile = false;
+        }
         self.phase = phase;
     }
 
@@ -327,6 +392,12 @@ impl Mapper for Mmc5 {
     fn nametable_read(&mut self, addr: u16) -> Option<u8> {
         let offset = addr as usize & 0x3FF;
         let attribute_fetch = offset >= 0x3C0;
+
+        if self.phase == PpuPhase::Background && self.exram_mode <= 1 {
+            if let Some(value) = self.split_fetch(attribute_fetch) {
+                return Some(value);
+            }
+        }
 
         if !attribute_fetch && self.phase == PpuPhase::Background {
             self.extended_tile = offset;
@@ -636,5 +707,112 @@ mod tests {
         }
         assert!(peak > 100.0 * PCM_SCALE + 10.0 * PULSE_SCALE, "{peak}");
         assert_eq!(m.cpu_read(0x5015), Some(1), "the pulse's length counter is running");
+    }
+
+    // ---- vertical split screen ----
+
+    /// A split on the left of tile column 4, rows from ExRAM, CHR bank 2 (4KB).
+    fn split_mmc5() -> Mmc5 {
+        let mut m = Mmc5::new(INesFile { prg_ram_size: 32 * 1024, ..file(5, 16, 64) });
+        m.cpu_write(0x5104, 0); // ExRAM as a nametable
+        m.cpu_write(0x5200, 0x80 | 4);
+        m.cpu_write(0x5201, 0);
+        m.cpu_write(0x5202, 2);
+        // the split nametable: tile (row, column) = row * 32 + column + 1 (mod 256); palette 3 for the whole area
+        for row in 0..30 {
+            for column in 0..32 {
+                m.exram[row * 32 + column] = (row * 32 + column + 1) as u8;
+            }
+        }
+        m.exram[0x3C0..0x400].fill(0xFF);
+        m
+    }
+
+    /// Fetches one line's 34 nametable bytes the way the PPU does, returning for each tile what the mapper supplied.
+    fn fetch_line(m: &mut Mmc5, line: u8) -> Vec<Option<u8>> {
+        m.scanline = line;
+        m.ppu_phase(PpuPhase::Sprites);
+        m.ppu_phase(PpuPhase::Background); // dot 321: the line's first two tiles are prefetched
+        let mut tiles = Vec::new();
+        for column in 0..34u16 {
+            tiles.push(m.nametable_read(0x2000 | (column & 31)));
+            m.nametable_read(0x23C0); // the attribute fetch right after
+        }
+        tiles
+    }
+
+    #[test]
+    fn the_split_replaces_the_tiles_left_of_its_column_with_exram() {
+        let mut m = split_mmc5();
+
+        let tiles = fetch_line(&mut m, 16); // row 2 of the split
+
+        assert_eq!(&tiles[..4], &[Some(65), Some(66), Some(67), Some(68)], "row 2, columns 0-3");
+        assert!(tiles[4..].iter().all(Option::is_none), "the rest comes from the normal nametable");
+    }
+
+    #[test]
+    fn a_split_on_the_right_covers_the_columns_from_the_threshold_on() {
+        let mut m = split_mmc5();
+        m.cpu_write(0x5200, 0x80 | 0x40 | 30);
+
+        let tiles = fetch_line(&mut m, 0);
+
+        assert!(tiles[..30].iter().all(Option::is_none));
+        assert_eq!(tiles[30], Some(31));
+        assert_eq!(tiles[31], Some(32));
+    }
+
+    #[test]
+    fn the_split_has_its_own_vertical_scroll_which_wraps_at_30_rows() {
+        let mut m = split_mmc5();
+        m.cpu_write(0x5201, 8 * 29); // starts on row 29
+
+        assert_eq!(fetch_line(&mut m, 0)[0], Some((29 * 32 + 1) as u8));
+        assert_eq!(fetch_line(&mut m, 8)[0], Some(1), "row 30 wraps to row 0");
+    }
+
+    #[test]
+    fn the_first_two_tiles_belong_to_the_next_line() {
+        let mut m = split_mmc5();
+
+        let tiles = fetch_line(&mut m, 7); // tiles 0 and 1 are the prefetch for line 8 = row 1
+
+        assert_eq!(tiles[0], Some(33));
+        assert_eq!(tiles[2], Some(3), "the visible fetches are for line 7 = row 0");
+    }
+
+    #[test]
+    fn split_tiles_get_their_palette_from_the_attribute_area_and_their_pixels_from_the_split_bank() {
+        let mut m = split_mmc5();
+        m.ppu_phase(PpuPhase::Sprites);
+        m.ppu_phase(PpuPhase::Background);
+        m.scanline = 12; // the first tiles are the prefetch for line 13: pixel row 5
+
+        m.nametable_read(0x2000);
+        assert_eq!(m.nametable_read(0x23C0), Some(0xFF), "palette 3 everywhere");
+        // the pattern fetch of the tile: the split bank (4KB bank 2 = 1KB unit 8) and its own pixel row
+        assert_eq!(m.ppu_read(0x0008 | 2), 8, "bank 2 regardless of the CHR registers");
+        assert_eq!(m.split_fine_y, 5);
+
+        for column in 1..5 {
+            m.nametable_read(0x2000 + column);
+        }
+        m.nametable_read(0x2005); // tile 5 is outside the split (threshold 4)
+        assert_eq!(m.nametable_read(0x23C0), None);
+        m.cpu_write(0x5101, 3);
+        m.cpu_write(0x5128, 9);
+        assert_ne!(m.ppu_read(0x0000), 8, "normal tiles use the normal banks");
+    }
+
+    #[test]
+    fn the_split_is_off_unless_enabled_and_while_exram_is_not_a_nametable_or_attribute_table() {
+        let mut m = split_mmc5();
+        m.cpu_write(0x5200, 0x04);
+        assert!(fetch_line(&mut m, 0).iter().all(Option::is_none));
+
+        m.cpu_write(0x5200, 0x80 | 4);
+        m.cpu_write(0x5104, 2);
+        assert!(fetch_line(&mut m, 0).iter().all(Option::is_none));
     }
 }
