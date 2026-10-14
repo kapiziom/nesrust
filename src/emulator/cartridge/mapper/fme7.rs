@@ -3,7 +3,7 @@
 //! The 5B variant also has expansion sound (see `sunsoft5b.rs`). https://www.nesdev.org/wiki/Sunsoft_FME-7
 
 use super::sunsoft5b::Sunsoft5bAudio;
-use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
+use super::{bank_index, mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -93,7 +93,11 @@ impl Mapper for Fme7 {
                 let register = self.prg_banks[0];
                 if register & 0x40 != 0 {
                     // RAM is selected: only visible when its enable bit is set
-                    if register & 0x80 != 0 { self.prg_ram.read(addr as usize - 0x6000) } else { None }
+                    if register & 0x80 != 0 {
+                        self.prg_ram.read(addr as usize - 0x6000)
+                    } else {
+                        None
+                    }
                 } else {
                     let bank = register as usize & 0x3F;
                     Some(self.prg_rom[bank_index(self.prg_rom.len(), PRG_8K, bank, addr as usize & 0x1FFF)])

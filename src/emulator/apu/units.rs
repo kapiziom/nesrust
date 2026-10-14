@@ -2,8 +2,8 @@
 //! https://www.nesdev.org/wiki/APU_Length_Counter, https://www.nesdev.org/wiki/APU_Envelope
 
 pub const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
-    12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30,
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16,
+    28, 32, 30,
 ];
 
 /// A down-counter clocked once per CPU cycle: it fires every `period + 1` cycles.
@@ -147,7 +147,11 @@ impl Envelope {
     }
 
     pub fn output(&self) -> u8 {
-        if self.constant { self.volume } else { self.decay }
+        if self.constant {
+            self.volume
+        } else {
+            self.decay
+        }
     }
 }
 
@@ -303,7 +307,12 @@ mod tests {
         let mut looping = Envelope::default();
         looping.write(0x20);
         looping.restart();
-        let levels: Vec<u8> = (0..18).map(|_| { looping.clock(); looping.output() }).collect();
+        let levels: Vec<u8> = (0..18)
+            .map(|_| {
+                looping.clock();
+                looping.output()
+            })
+            .collect();
         assert_eq!(levels[0], 15);
         assert_eq!(levels[15], 0);
         assert_eq!(levels[16], 15, "loops back to 15");

@@ -9,12 +9,7 @@ pub struct MockBus {
 
 impl MockBus {
     pub fn new() -> Self {
-        Self {
-            memory: [0; 0x10000],
-            nmi_interrupt: None,
-            irq_line: false,
-            cycles: 0
-        }
+        Self { memory: [0; 0x10000], nmi_interrupt: None, irq_line: false, cycles: 0 }
     }
 
     pub fn load_program(&mut self, program: &[u8], start_address: u16) {
@@ -49,7 +44,6 @@ impl CpuBus for MockBus {
         self.irq_line
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -99,7 +93,6 @@ mod tests {
         bus.nmi_interrupt = Some(0x10);
         assert_eq!(bus.nmi_interrupt, Some(0x10));
     }
-
 
     #[test]
     fn test_bus_cycles() {

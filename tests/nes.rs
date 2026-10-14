@@ -2,8 +2,8 @@
 
 use nesrs::emulator::cartridge::Cartridge;
 use nesrs::emulator::controller::Buttons;
-use nesrs::emulator::region::Region;
 use nesrs::emulator::nes::Nes;
+use nesrs::emulator::region::Region;
 
 /// Builds an NROM-128 cartridge whose PRG starts at $8000 with `program` and the given interrupt vectors.
 fn nes_with(program: &[u8], nmi: u16, reset: u16) -> Nes {

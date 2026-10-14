@@ -4,7 +4,7 @@
 //! Evaluation of the next scanline's sprites is done in one go at dot 257 instead of during dots 65-256;
 //! the fetches of the pattern bytes happen on the real dots so mappers watching A12 (MMC3) see them.
 
-use super::{PPU, CTRL_SPRITE_SIZE, CTRL_SPRITE_TABLE, MASK_SPRITES, MASK_SPRITES_LEFT, STATUS_SPRITE_OVERFLOW};
+use super::{CTRL_SPRITE_SIZE, CTRL_SPRITE_TABLE, MASK_SPRITES, MASK_SPRITES_LEFT, PPU, STATUS_SPRITE_OVERFLOW};
 use crate::emulator::cartridge::Cartridge;
 
 const ATTR_PALETTE: u8 = 0x03;
@@ -33,7 +33,11 @@ pub(super) struct SpritePixel {
 
 impl PPU {
     fn sprite_height(&self) -> i16 {
-        if self.ctrl & CTRL_SPRITE_SIZE != 0 { 16 } else { 8 }
+        if self.ctrl & CTRL_SPRITE_SIZE != 0 {
+            16
+        } else {
+            8
+        }
     }
 
     /// Dot 257: the sprites found during this line's evaluation become the units of the next line.
@@ -169,17 +173,14 @@ impl PPU {
             return None;
         }
 
-        self.sprites[..self.sprite_count]
-            .iter()
-            .filter(|unit| unit.x_counter == 0)
-            .find_map(|unit| {
-                let pixel = ((unit.pattern_hi >> 7) & 1) << 1 | ((unit.pattern_lo >> 7) & 1);
-                (pixel != 0).then_some(SpritePixel {
-                    pixel,
-                    palette: unit.attributes & ATTR_PALETTE,
-                    behind_background: unit.attributes & ATTR_BEHIND_BACKGROUND != 0,
-                    is_sprite_zero: unit.is_sprite_zero,
-                })
+        self.sprites[..self.sprite_count].iter().filter(|unit| unit.x_counter == 0).find_map(|unit| {
+            let pixel = ((unit.pattern_hi >> 7) & 1) << 1 | ((unit.pattern_lo >> 7) & 1);
+            (pixel != 0).then_some(SpritePixel {
+                pixel,
+                palette: unit.attributes & ATTR_PALETTE,
+                behind_background: unit.attributes & ATTR_BEHIND_BACKGROUND != 0,
+                is_sprite_zero: unit.is_sprite_zero,
             })
+        })
     }
 }

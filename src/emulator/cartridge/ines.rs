@@ -20,7 +20,10 @@ pub enum CartridgeError {
     /// Does not start with `NES\x1A`.
     InvalidMagic,
     /// The header announces more data than the file contains.
-    Truncated { expected: usize, actual: usize },
+    Truncated {
+        expected: usize,
+        actual: usize,
+    },
     /// The header has no PRG ROM, or a size that cannot be represented.
     InvalidSize,
     UnsupportedMapper(u16),
@@ -170,7 +173,11 @@ fn nes2_rom_size(lsb: u8, msb_nibble: u8, bank_size: usize) -> Option<usize> {
 
 /// NES 2.0 RAM size field: 0 means none, otherwise 64 << shift bytes.
 fn nes2_ram_size(shift: u8) -> usize {
-    if shift == 0 { 0 } else { 64usize << shift }
+    if shift == 0 {
+        0
+    } else {
+        64usize << shift
+    }
 }
 
 #[cfg(test)]

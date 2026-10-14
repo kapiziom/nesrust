@@ -1,23 +1,23 @@
 mod addressing;
-mod operation_codes;
 mod flags;
 mod instructions;
 mod interrupts;
+mod operation_codes;
 mod stack;
 
 use crate::emulator::bus::cpu_bus::CpuBus;
-pub use operation_codes::*;
-use addressing::{AddressingMode, Access};
 use crate::emulator::cpu::flags::CpuFlags;
+use addressing::{Access, AddressingMode};
+pub use operation_codes::*;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU<B: CpuBus> {
-    pub (super) register_a: u8,
-    pub (super) register_x: u8,
-    pub (super) register_y: u8,
-    pub (super) stack_pointer: u8,
+    pub(super) register_a: u8,
+    pub(super) register_x: u8,
+    pub(super) register_y: u8,
+    pub(super) stack_pointer: u8,
     pub program_counter: u16,
-    pub (super) flags: flags::CpuFlags,
+    pub(super) flags: flags::CpuFlags,
     pub bus: B,
     /// Total CPU cycles executed since creation (for tracing/test comparison).
     pub cycles: u64,
@@ -106,7 +106,7 @@ impl<B: CpuBus> CPU<B> {
 
             if !self.execute_next() || operation_code == 0x00 {
                 log::debug!("program end");
-                break
+                break;
             }
         }
     }
@@ -215,18 +215,54 @@ impl<B: CpuBus> CPU<B> {
 
         match op.mnemonic {
             // read-type instructions
-            Mnemonic::ADC => { let value = self.read_operand(mode); self.adc(value) }
-            Mnemonic::AND => { let value = self.read_operand(mode); self.and(value) }
-            Mnemonic::BIT => { let value = self.read_operand(mode); self.bit(value) }
-            Mnemonic::CMP => { let value = self.read_operand(mode); self.compare(self.register_a, value) }
-            Mnemonic::CPX => { let value = self.read_operand(mode); self.compare(self.register_x, value) }
-            Mnemonic::CPY => { let value = self.read_operand(mode); self.compare(self.register_y, value) }
-            Mnemonic::EOR => { let value = self.read_operand(mode); self.eor(value) }
-            Mnemonic::LDA => { let value = self.read_operand(mode); self.set_register_a(value) }
-            Mnemonic::LDX => { let value = self.read_operand(mode); self.set_register_x(value) }
-            Mnemonic::LDY => { let value = self.read_operand(mode); self.set_register_y(value) }
-            Mnemonic::ORA => { let value = self.read_operand(mode); self.ora(value) }
-            Mnemonic::SBC => { let value = self.read_operand(mode); self.sbc(value) }
+            Mnemonic::ADC => {
+                let value = self.read_operand(mode);
+                self.adc(value)
+            }
+            Mnemonic::AND => {
+                let value = self.read_operand(mode);
+                self.and(value)
+            }
+            Mnemonic::BIT => {
+                let value = self.read_operand(mode);
+                self.bit(value)
+            }
+            Mnemonic::CMP => {
+                let value = self.read_operand(mode);
+                self.compare(self.register_a, value)
+            }
+            Mnemonic::CPX => {
+                let value = self.read_operand(mode);
+                self.compare(self.register_x, value)
+            }
+            Mnemonic::CPY => {
+                let value = self.read_operand(mode);
+                self.compare(self.register_y, value)
+            }
+            Mnemonic::EOR => {
+                let value = self.read_operand(mode);
+                self.eor(value)
+            }
+            Mnemonic::LDA => {
+                let value = self.read_operand(mode);
+                self.set_register_a(value)
+            }
+            Mnemonic::LDX => {
+                let value = self.read_operand(mode);
+                self.set_register_x(value)
+            }
+            Mnemonic::LDY => {
+                let value = self.read_operand(mode);
+                self.set_register_y(value)
+            }
+            Mnemonic::ORA => {
+                let value = self.read_operand(mode);
+                self.ora(value)
+            }
+            Mnemonic::SBC => {
+                let value = self.read_operand(mode);
+                self.sbc(value)
+            }
             Mnemonic::NOP => {
                 if mode == AddressingMode::Implicit {
                     self.implied();
@@ -250,14 +286,38 @@ impl<B: CpuBus> CPU<B> {
             Mnemonic::DEC => self.modify(mode, |cpu, value| cpu.dec(value)),
 
             // branches
-            Mnemonic::BCC => { let taken = !self.contains_flag(CpuFlags::CARRY); self.branch(taken) }
-            Mnemonic::BCS => { let taken = self.contains_flag(CpuFlags::CARRY); self.branch(taken) }
-            Mnemonic::BEQ => { let taken = self.contains_flag(CpuFlags::ZERO); self.branch(taken) }
-            Mnemonic::BMI => { let taken = self.contains_flag(CpuFlags::NEGATIVE); self.branch(taken) }
-            Mnemonic::BNE => { let taken = !self.contains_flag(CpuFlags::ZERO); self.branch(taken) }
-            Mnemonic::BPL => { let taken = !self.contains_flag(CpuFlags::NEGATIVE); self.branch(taken) }
-            Mnemonic::BVC => { let taken = !self.contains_flag(CpuFlags::OVERFLOW); self.branch(taken) }
-            Mnemonic::BVS => { let taken = self.contains_flag(CpuFlags::OVERFLOW); self.branch(taken) }
+            Mnemonic::BCC => {
+                let taken = !self.contains_flag(CpuFlags::CARRY);
+                self.branch(taken)
+            }
+            Mnemonic::BCS => {
+                let taken = self.contains_flag(CpuFlags::CARRY);
+                self.branch(taken)
+            }
+            Mnemonic::BEQ => {
+                let taken = self.contains_flag(CpuFlags::ZERO);
+                self.branch(taken)
+            }
+            Mnemonic::BMI => {
+                let taken = self.contains_flag(CpuFlags::NEGATIVE);
+                self.branch(taken)
+            }
+            Mnemonic::BNE => {
+                let taken = !self.contains_flag(CpuFlags::ZERO);
+                self.branch(taken)
+            }
+            Mnemonic::BPL => {
+                let taken = !self.contains_flag(CpuFlags::NEGATIVE);
+                self.branch(taken)
+            }
+            Mnemonic::BVC => {
+                let taken = !self.contains_flag(CpuFlags::OVERFLOW);
+                self.branch(taken)
+            }
+            Mnemonic::BVS => {
+                let taken = self.contains_flag(CpuFlags::OVERFLOW);
+                self.branch(taken)
+            }
 
             // jumps, subroutines, interrupts
             Mnemonic::JMP => self.program_counter = self.effective_address(mode, Access::Read),
@@ -277,25 +337,76 @@ impl<B: CpuBus> CPU<B> {
             Mnemonic::PLP => self.plp(),
 
             // flags
-            Mnemonic::CLC => { self.implied(); self.clear_flag(CpuFlags::CARRY) }
-            Mnemonic::CLD => { self.implied(); self.clear_flag(CpuFlags::DECIMAL_MODE) }
-            Mnemonic::CLI => { self.implied(); self.clear_flag(CpuFlags::INTERRUPT_DISABLE) }
-            Mnemonic::CLV => { self.implied(); self.clear_flag(CpuFlags::OVERFLOW) }
-            Mnemonic::SEC => { self.implied(); self.insert_flag(CpuFlags::CARRY) }
-            Mnemonic::SED => { self.implied(); self.insert_flag(CpuFlags::DECIMAL_MODE) }
-            Mnemonic::SEI => { self.implied(); self.insert_flag(CpuFlags::INTERRUPT_DISABLE) }
+            Mnemonic::CLC => {
+                self.implied();
+                self.clear_flag(CpuFlags::CARRY)
+            }
+            Mnemonic::CLD => {
+                self.implied();
+                self.clear_flag(CpuFlags::DECIMAL_MODE)
+            }
+            Mnemonic::CLI => {
+                self.implied();
+                self.clear_flag(CpuFlags::INTERRUPT_DISABLE)
+            }
+            Mnemonic::CLV => {
+                self.implied();
+                self.clear_flag(CpuFlags::OVERFLOW)
+            }
+            Mnemonic::SEC => {
+                self.implied();
+                self.insert_flag(CpuFlags::CARRY)
+            }
+            Mnemonic::SED => {
+                self.implied();
+                self.insert_flag(CpuFlags::DECIMAL_MODE)
+            }
+            Mnemonic::SEI => {
+                self.implied();
+                self.insert_flag(CpuFlags::INTERRUPT_DISABLE)
+            }
 
             // register operations
-            Mnemonic::DEX => { self.implied(); self.set_register_x(self.register_x.wrapping_sub(1)) }
-            Mnemonic::DEY => { self.implied(); self.set_register_y(self.register_y.wrapping_sub(1)) }
-            Mnemonic::INX => { self.implied(); self.set_register_x(self.register_x.wrapping_add(1)) }
-            Mnemonic::INY => { self.implied(); self.set_register_y(self.register_y.wrapping_add(1)) }
-            Mnemonic::TAX => { self.implied(); self.set_register_x(self.register_a) }
-            Mnemonic::TAY => { self.implied(); self.set_register_y(self.register_a) }
-            Mnemonic::TSX => { self.implied(); self.set_register_x(self.stack_pointer) }
-            Mnemonic::TXA => { self.implied(); self.set_register_a(self.register_x) }
-            Mnemonic::TXS => { self.implied(); self.stack_pointer = self.register_x }
-            Mnemonic::TYA => { self.implied(); self.set_register_a(self.register_y) }
+            Mnemonic::DEX => {
+                self.implied();
+                self.set_register_x(self.register_x.wrapping_sub(1))
+            }
+            Mnemonic::DEY => {
+                self.implied();
+                self.set_register_y(self.register_y.wrapping_sub(1))
+            }
+            Mnemonic::INX => {
+                self.implied();
+                self.set_register_x(self.register_x.wrapping_add(1))
+            }
+            Mnemonic::INY => {
+                self.implied();
+                self.set_register_y(self.register_y.wrapping_add(1))
+            }
+            Mnemonic::TAX => {
+                self.implied();
+                self.set_register_x(self.register_a)
+            }
+            Mnemonic::TAY => {
+                self.implied();
+                self.set_register_y(self.register_a)
+            }
+            Mnemonic::TSX => {
+                self.implied();
+                self.set_register_x(self.stack_pointer)
+            }
+            Mnemonic::TXA => {
+                self.implied();
+                self.set_register_a(self.register_x)
+            }
+            Mnemonic::TXS => {
+                self.implied();
+                self.stack_pointer = self.register_x
+            }
+            Mnemonic::TYA => {
+                self.implied();
+                self.set_register_a(self.register_y)
+            }
 
             // unofficial opcodes
             Mnemonic::LAX => {
@@ -334,7 +445,10 @@ impl<B: CpuBus> CPU<B> {
                 cpu.adc(result);
                 result
             }),
-            Mnemonic::XAA => { let value = self.read_operand(mode); self.set_register_a(self.register_x & value) }
+            Mnemonic::XAA => {
+                let value = self.read_operand(mode);
+                self.set_register_a(self.register_x & value)
+            }
             Mnemonic::LXA => {
                 let value = self.read_operand(mode);
                 self.register_a = value;
@@ -354,22 +468,34 @@ impl<B: CpuBus> CPU<B> {
                 self.stack_pointer = self.register_a & self.register_x;
                 self.store_masked_by_high_byte(mode, self.stack_pointer);
             }
-            Mnemonic::ANC => { let value = self.read_operand(mode); self.anc(value) }
-            Mnemonic::ALR => { let value = self.read_operand(mode); self.alr(value) }
-            Mnemonic::ARR => { let value = self.read_operand(mode); self.arr(value) }
-            Mnemonic::AXS => { let value = self.read_operand(mode); self.axs(value) }
+            Mnemonic::ANC => {
+                let value = self.read_operand(mode);
+                self.anc(value)
+            }
+            Mnemonic::ALR => {
+                let value = self.read_operand(mode);
+                self.alr(value)
+            }
+            Mnemonic::ARR => {
+                let value = self.read_operand(mode);
+                self.arr(value)
+            }
+            Mnemonic::AXS => {
+                let value = self.read_operand(mode);
+                self.axs(value)
+            }
         }
     }
 
     /// One CPU cycle in which the bus is not used (the bus and everything behind it still advances).
-    pub (super) fn tick(&mut self) {
+    pub(super) fn tick(&mut self) {
         self.cycles += 1;
         self.bus.tick(1);
         self.end_cycle();
     }
 
     /// Bus read; costs one CPU cycle. If the DMC is waiting for a sample byte the CPU is halted first.
-    pub (super) fn read(&mut self, address: u16) -> u8 {
+    pub(super) fn read(&mut self, address: u16) -> u8 {
         if let Some(sample_address) = self.bus.take_dmc_dma() {
             self.run_dmc_dma(address, sample_address);
         }
@@ -387,7 +513,7 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// Bus write; costs one CPU cycle.
-    pub (super) fn write(&mut self, address: u16, data: u8) {
+    pub(super) fn write(&mut self, address: u16, data: u8) {
         self.cycles += 1;
         self.bus.tick_before_access(true);
         self.bus.write(address, data);
@@ -420,11 +546,11 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// The NMI and IRQ requests as seen at the end of the previous cycle (what the next poll would act on).
-    pub (super) fn interrupt_lines_seen(&self) -> (bool, bool) {
+    pub(super) fn interrupt_lines_seen(&self) -> (bool, bool) {
         (self.nmi_ready, self.irq_ready)
     }
 
-    pub (super) fn restore_interrupt_lines_seen(&mut self, seen: (bool, bool)) {
+    pub(super) fn restore_interrupt_lines_seen(&mut self, seen: (bool, bool)) {
         (self.nmi_ready, self.irq_ready) = seen;
     }
 
@@ -608,7 +734,10 @@ mod test {
 
     #[test]
     fn test_nmi_has_priority_over_irq() {
-        let mut cpu = interrupt_test_cpu(|bus| { bus.nmi_interrupt = Some(1); bus.irq_line = true; });
+        let mut cpu = interrupt_test_cpu(|bus| {
+            bus.nmi_interrupt = Some(1);
+            bus.irq_line = true;
+        });
         cpu.clear_flag(CpuFlags::INTERRUPT_DISABLE);
 
         cpu.step(); // NOP
@@ -946,11 +1075,23 @@ mod test {
 
             assert!(cpu.step(), "opcode {:#04X} {:?} not executed", op.code, op.mnemonic);
 
-            assert_eq!(cpu.cycles, op.cycles as u64, "cycles of {:#04X} {:?} {:?}", op.code, op.mnemonic, op.addressing_mode);
+            assert_eq!(
+                cpu.cycles, op.cycles as u64,
+                "cycles of {:#04X} {:?} {:?}",
+                op.code, op.mnemonic, op.addressing_mode
+            );
 
-            let jumps = matches!(op.mnemonic, Mnemonic::JMP | Mnemonic::JSR | Mnemonic::RTS | Mnemonic::RTI | Mnemonic::BRK);
+            let jumps =
+                matches!(op.mnemonic, Mnemonic::JMP | Mnemonic::JSR | Mnemonic::RTS | Mnemonic::RTI | Mnemonic::BRK);
             if !jumps {
-                assert_eq!(cpu.program_counter, 0x8000 + op.bytes as u16, "length of {:#04X} {:?} {:?}", op.code, op.mnemonic, op.addressing_mode);
+                assert_eq!(
+                    cpu.program_counter,
+                    0x8000 + op.bytes as u16,
+                    "length of {:#04X} {:?} {:?}",
+                    op.code,
+                    op.mnemonic,
+                    op.addressing_mode
+                );
             }
         }
     }
@@ -994,7 +1135,13 @@ mod test {
     #[test]
     fn test_unofficial_nop_skips_operand() {
         // 0x1A implied, 0x04 zero page, 0x0C absolute, 0x1C absolute,X, 0x80 immediate
-        for (program, len) in [(vec![0x1A], 1u16), (vec![0x04, 0x10], 2), (vec![0x0C, 0x00, 0x20], 3), (vec![0x1C, 0x00, 0x20], 3), (vec![0x80, 0x44], 2)] {
+        for (program, len) in [
+            (vec![0x1A], 1u16),
+            (vec![0x04, 0x10], 2),
+            (vec![0x0C, 0x00, 0x20], 3),
+            (vec![0x1C, 0x00, 0x20], 3),
+            (vec![0x80, 0x44], 2),
+        ] {
             let cpu = run_single(&program, |cpu| cpu.register_a = 0x42);
             assert_eq!(cpu.program_counter, 0x8000 + len, "program {:02X?}", program);
             assert_eq!(cpu.register_a, 0x42);
@@ -1003,7 +1150,10 @@ mod test {
 
     #[test]
     fn test_sbc_unofficial_eb() {
-        let cpu = run_single(&[0xEB, 0x05], |cpu| { cpu.register_a = 0x10; cpu.insert_flag(CpuFlags::CARRY); });
+        let cpu = run_single(&[0xEB, 0x05], |cpu| {
+            cpu.register_a = 0x10;
+            cpu.insert_flag(CpuFlags::CARRY);
+        });
 
         assert_eq!(cpu.register_a, 0x0B);
         assert!(cpu.flags.contains(CpuFlags::CARRY));
@@ -1034,7 +1184,10 @@ mod test {
 
     #[test]
     fn test_sax_zero_page() {
-        let mut cpu = run_single(&[0x87, 0x10], |cpu| { cpu.register_a = 0xF0; cpu.register_x = 0x3C; });
+        let mut cpu = run_single(&[0x87, 0x10], |cpu| {
+            cpu.register_a = 0xF0;
+            cpu.register_x = 0x3C;
+        });
 
         assert_eq!(cpu.peek(0x10), 0x30);
         assert!(!cpu.flags.contains(CpuFlags::ZERO), "SAX does not touch flags");
@@ -1042,7 +1195,10 @@ mod test {
 
     #[test]
     fn test_dcp_zero_page() {
-        let mut cpu = run_single(&[0xC7, 0x10], |cpu| { cpu.poke(0x10, 0x10); cpu.register_a = 0x0F; });
+        let mut cpu = run_single(&[0xC7, 0x10], |cpu| {
+            cpu.poke(0x10, 0x10);
+            cpu.register_a = 0x0F;
+        });
 
         assert_eq!(cpu.peek(0x10), 0x0F);
         assert_eq!(cpu.register_a, 0x0F);
@@ -1065,7 +1221,10 @@ mod test {
 
     #[test]
     fn test_slo_zero_page() {
-        let mut cpu = run_single(&[0x07, 0x10], |cpu| { cpu.poke(0x10, 0x81); cpu.register_a = 0x01; });
+        let mut cpu = run_single(&[0x07, 0x10], |cpu| {
+            cpu.poke(0x10, 0x81);
+            cpu.register_a = 0x01;
+        });
 
         assert_eq!(cpu.peek(0x10), 0x02);
         assert_eq!(cpu.register_a, 0x03);
@@ -1087,7 +1246,10 @@ mod test {
 
     #[test]
     fn test_sre_zero_page() {
-        let mut cpu = run_single(&[0x47, 0x10], |cpu| { cpu.poke(0x10, 0x03); cpu.register_a = 0xFF; });
+        let mut cpu = run_single(&[0x47, 0x10], |cpu| {
+            cpu.poke(0x10, 0x03);
+            cpu.register_a = 0xFF;
+        });
 
         assert_eq!(cpu.peek(0x10), 0x01);
         assert_eq!(cpu.register_a, 0xFE);
@@ -1097,10 +1259,13 @@ mod test {
 
     #[test]
     fn test_rra_zero_page() {
-        let mut cpu = run_single(&[0x67, 0x10], |cpu| { cpu.poke(0x10, 0x03); cpu.register_a = 0x10; });
+        let mut cpu = run_single(&[0x67, 0x10], |cpu| {
+            cpu.poke(0x10, 0x03);
+            cpu.register_a = 0x10;
+        });
 
         assert_eq!(cpu.peek(0x10), 0x01); // ROR: 0x03 >> 1, carry out = 1
-        assert_eq!(cpu.register_a, 0x12);     // ADC: 0x10 + 0x01 + carry(1)
+        assert_eq!(cpu.register_a, 0x12); // ADC: 0x10 + 0x01 + carry(1)
         assert!(!cpu.flags.contains(CpuFlags::CARRY));
     }
 
@@ -1123,16 +1288,22 @@ mod test {
 
     #[test]
     fn test_arr_immediate() {
-        let cpu = run_single(&[0x6B, 0xFF], |cpu| { cpu.register_a = 0xFF; cpu.insert_flag(CpuFlags::CARRY); });
+        let cpu = run_single(&[0x6B, 0xFF], |cpu| {
+            cpu.register_a = 0xFF;
+            cpu.insert_flag(CpuFlags::CARRY);
+        });
 
         assert_eq!(cpu.register_a, 0xFF);
-        assert!(cpu.flags.contains(CpuFlags::CARRY));   // bit 6
+        assert!(cpu.flags.contains(CpuFlags::CARRY)); // bit 6
         assert!(!cpu.flags.contains(CpuFlags::OVERFLOW)); // bit 6 xor bit 5
     }
 
     #[test]
     fn test_axs_immediate() {
-        let cpu = run_single(&[0xCB, 0x05], |cpu| { cpu.register_a = 0xFF; cpu.register_x = 0x0F; });
+        let cpu = run_single(&[0xCB, 0x05], |cpu| {
+            cpu.register_a = 0xFF;
+            cpu.register_x = 0x0F;
+        });
 
         assert_eq!(cpu.register_x, 0x0A); // (0xFF & 0x0F) - 5
         assert!(cpu.flags.contains(CpuFlags::CARRY));

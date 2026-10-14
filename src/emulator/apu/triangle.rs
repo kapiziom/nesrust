@@ -78,7 +78,11 @@ impl Triangle {
 
     /// 0-15; holds its last value while the sequencer is halted.
     pub fn output(&self) -> u8 {
-        if self.step < 16 { 15 - self.step } else { self.step - 16 }
+        if self.step < 16 {
+            15 - self.step
+        } else {
+            self.step - 16
+        }
     }
 }
 
@@ -97,7 +101,12 @@ mod tests {
     }
 
     fn run(triangle: &mut Triangle, cycles: usize) -> Vec<u8> {
-        (0..cycles).map(|_| { triangle.tick(); triangle.output() }).collect()
+        (0..cycles)
+            .map(|_| {
+                triangle.tick();
+                triangle.output()
+            })
+            .collect()
     }
 
     #[test]

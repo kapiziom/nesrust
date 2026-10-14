@@ -2,7 +2,7 @@
 //! switched by latches which watch the PPU's pattern fetches of the "$FD" and "$FE" tiles.
 //! https://www.nesdev.org/wiki/MMC2, https://www.nesdev.org/wiki/MMC4
 
-use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
+use super::{bank_index, mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -52,7 +52,8 @@ impl Mmc2 {
         match self.variant {
             Variant::Mmc2 => {
                 let banks = (len / 0x2000).max(1);
-                let bank = if addr < 0xA000 { self.prg_bank } else { banks.saturating_sub(3) + (offset - 0x2000) / 0x2000 };
+                let bank =
+                    if addr < 0xA000 { self.prg_bank } else { banks.saturating_sub(3) + (offset - 0x2000) / 0x2000 };
                 bank_index(len, 0x2000, bank, offset & 0x1FFF)
             }
             Variant::Mmc4 => {

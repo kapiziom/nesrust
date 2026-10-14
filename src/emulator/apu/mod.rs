@@ -12,11 +12,11 @@ mod pulse;
 mod triangle;
 mod units;
 
+use crate::emulator::region::Region;
 use dmc::Dmc;
 use frame_counter::FrameCounter;
 use mixer::{Mixer, OutputFilter};
 use noise::Noise;
-use crate::emulator::region::Region;
 use pulse::Pulse;
 use triangle::Triangle;
 

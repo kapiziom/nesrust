@@ -86,9 +86,18 @@ mod tests {
     #[test]
     fn every_button_has_its_own_position() {
         for (index, button) in [
-            Buttons::A, Buttons::B, Buttons::SELECT, Buttons::START,
-            Buttons::UP, Buttons::DOWN, Buttons::LEFT, Buttons::RIGHT,
-        ].into_iter().enumerate() {
+            Buttons::A,
+            Buttons::B,
+            Buttons::SELECT,
+            Buttons::START,
+            Buttons::UP,
+            Buttons::DOWN,
+            Buttons::LEFT,
+            Buttons::RIGHT,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let mut controller = Controller::new();
             controller.set_buttons(button);
             latch(&mut controller);

@@ -30,8 +30,7 @@ impl Cartridge {
     pub(crate) fn placeholder() -> Self {
         let mut file = vec![0u8; 16 + 16 * 1024];
         file[..5].copy_from_slice(&[b'N', b'E', b'S', 0x1A, 1]);
-        Self::from_bytes(&file)
-            .expect("a minimal NROM file is valid")
+        Self::from_bytes(&file).expect("a minimal NROM file is valid")
     }
 
     /// Parses an iNES / NES 2.0 file and attaches its mapper.
@@ -149,7 +148,8 @@ mod tests {
 
     #[test]
     fn supported_mappers_load() {
-        for mapper in [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206] {
+        for mapper in [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206]
+        {
             assert!(Cartridge::from_bytes(&nes_file(mapper)).is_ok(), "mapper {mapper}");
         }
     }

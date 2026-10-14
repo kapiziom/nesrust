@@ -3,12 +3,8 @@
 use super::units::{Envelope, LengthCounter, Timer};
 
 /// Output waveforms; the sequencer index counts down and reads them from the front.
-const DUTY: [[u8; 8]; 4] = [
-    [0, 1, 0, 0, 0, 0, 0, 0],
-    [0, 1, 1, 0, 0, 0, 0, 0],
-    [0, 1, 1, 1, 1, 0, 0, 0],
-    [1, 0, 0, 1, 1, 1, 1, 1],
-];
+const DUTY: [[u8; 8]; 4] =
+    [[0, 1, 0, 0, 0, 0, 0, 0], [0, 1, 1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 1, 0, 0, 0], [1, 0, 0, 1, 1, 1, 1, 1]];
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 struct Sweep {
@@ -111,7 +107,11 @@ impl Pulse {
     fn target_period(&self) -> i32 {
         let change = (self.raw_period >> self.sweep.shift) as i32;
         let change = if self.sweep.negate {
-            if self.ones_complement { -change - 1 } else { -change }
+            if self.ones_complement {
+                -change - 1
+            } else {
+                -change
+            }
         } else {
             change
         };

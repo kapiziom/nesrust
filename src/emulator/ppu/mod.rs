@@ -350,7 +350,11 @@ impl PPU {
     fn oam_read(&self, address: u8) -> u8 {
         let value = self.oam[address as usize];
         // bits 2-4 of the attribute byte do not exist
-        if address & 3 == 2 { value & 0xE3 } else { value }
+        if address & 3 == 2 {
+            value & 0xE3
+        } else {
+            value
+        }
     }
 
     fn write_oam_data(&mut self, data: u8) {
@@ -597,8 +601,10 @@ impl PPU {
     fn reload_background_shifters(&mut self) {
         self.pattern_lo_shift = (self.pattern_lo_shift & 0xFF00) | self.pattern_lo_latch as u16;
         self.pattern_hi_shift = (self.pattern_hi_shift & 0xFF00) | self.pattern_hi_latch as u16;
-        self.attribute_lo_shift = (self.attribute_lo_shift & 0xFF00) | if self.attribute_latch & 1 != 0 { 0xFF } else { 0 };
-        self.attribute_hi_shift = (self.attribute_hi_shift & 0xFF00) | if self.attribute_latch & 2 != 0 { 0xFF } else { 0 };
+        self.attribute_lo_shift =
+            (self.attribute_lo_shift & 0xFF00) | if self.attribute_latch & 1 != 0 { 0xFF } else { 0 };
+        self.attribute_hi_shift =
+            (self.attribute_hi_shift & 0xFF00) | if self.attribute_latch & 2 != 0 { 0xFF } else { 0 };
     }
 
     fn shift_background(&mut self) {
@@ -616,11 +622,7 @@ impl PPU {
         let x = self.dot as usize - 1;
         let y = self.scanline as usize;
 
-        let color = if self.rendering_enabled() {
-            self.composite_pixel(x)
-        } else {
-            self.backdrop_color()
-        };
+        let color = if self.rendering_enabled() { self.composite_pixel(x) } else { self.backdrop_color() };
 
         let color = if self.mask & MASK_GREYSCALE != 0 { color & 0x30 } else { color } & 0x3F;
         self.color_indices[y * SCREEN_WIDTH + x] = color;
@@ -695,7 +697,11 @@ fn nametable_offset(address: u16, mirroring: Mirroring) -> usize {
 /// Index into palette RAM; the sprite backdrop entries $10/$14/$18/$1C mirror $00/$04/$08/$0C.
 fn palette_index(address: u16) -> usize {
     let index = address as usize & 0x1F;
-    if index & 0x13 == 0x10 { index & !0x10 } else { index }
+    if index & 0x13 == 0x10 {
+        index & !0x10
+    } else {
+        index
+    }
 }
 
 #[cfg(test)]

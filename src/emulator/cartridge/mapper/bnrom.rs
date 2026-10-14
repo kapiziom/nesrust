@@ -1,7 +1,7 @@
 //! Mapper 34: BNROM (32KB PRG bank register, CHR-RAM) and NINA-001 (PRG-RAM plus registers at $7FFD-$7FFF, CHR-ROM).
 //! https://www.nesdev.org/wiki/INES_Mapper_034
 
-use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
+use super::{bank_index, mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 

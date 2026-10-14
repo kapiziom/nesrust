@@ -867,7 +867,11 @@ fn reading_a_register_refreshes_only_the_bits_it_drives() {
     read(&mut ppu, &mut cart, 2); // drives bits 7-5 only
 
     ppu.frame += 1;
-    assert_eq!(read(&mut ppu, &mut cart, 0), 0x80, "bit 7 was refreshed by the read; bits 6-5 were driven low; bits 4-0 decayed");
+    assert_eq!(
+        read(&mut ppu, &mut cart, 0),
+        0x80,
+        "bit 7 was refreshed by the read; bits 6-5 were driven low; bits 4-0 decayed"
+    );
 }
 
 #[test]

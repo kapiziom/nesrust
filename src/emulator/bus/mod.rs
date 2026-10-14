@@ -2,9 +2,9 @@ pub mod cpu_bus;
 pub mod mock_bus;
 
 use crate::emulator::apu::{self, Apu};
-use crate::emulator::ppu::PPU;
 use crate::emulator::cartridge::Cartridge;
 use crate::emulator::controller::{Buttons, Controller};
+use crate::emulator::ppu::PPU;
 use crate::emulator::ram::RAM;
 use crate::emulator::region::Region;
 

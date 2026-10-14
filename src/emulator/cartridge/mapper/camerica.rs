@@ -2,7 +2,7 @@
 //! The BF9097 variant also has a single-screen select in $8000-$9FFF.
 //! https://www.nesdev.org/wiki/INES_Mapper_071
 
-use super::{mapper_state, bank_index, Chr, Mapper};
+use super::{bank_index, mapper_state, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -47,7 +47,8 @@ impl Mapper for Camerica {
         match addr {
             // BF9097: bit 4 chooses which nametable all four screens show
             0x9000..=0x9FFF => {
-                self.mirroring = if data & 0x10 != 0 { Mirroring::SingleScreenUpper } else { Mirroring::SingleScreenLower };
+                self.mirroring =
+                    if data & 0x10 != 0 { Mirroring::SingleScreenUpper } else { Mirroring::SingleScreenLower };
             }
             0xC000..=0xFFFF => self.bank = data as usize,
             _ => {}

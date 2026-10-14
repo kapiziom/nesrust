@@ -55,9 +55,21 @@ impl Mmc1 {
             // 32KB mode: low bit of the bank number is ignored
             0 | 1 => (prg_bank & !1) | upper_half as usize,
             // first bank fixed at $8000, switchable at $C000
-            2 => if upper_half { prg_bank } else { 0 },
+            2 => {
+                if upper_half {
+                    prg_bank
+                } else {
+                    0
+                }
+            }
             // switchable at $8000, last bank fixed at $C000
-            _ => if upper_half { banks - 1 } else { prg_bank },
+            _ => {
+                if upper_half {
+                    banks - 1
+                } else {
+                    prg_bank
+                }
+            }
         };
 
         (outer + (bank % banks) * PRG_BANK_SIZE + (addr as usize & 0x3FFF)) % self.prg_rom.len()

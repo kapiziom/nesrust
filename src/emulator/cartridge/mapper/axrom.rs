@@ -1,7 +1,7 @@
 //! Mapper 7 (AxROM): 32KB PRG banks, single-screen mirroring selected by a register, CHR-RAM.
 //! https://www.nesdev.org/wiki/AxROM
 
-use super::{mapper_state, bank_index, Chr, Mapper};
+use super::{bank_index, mapper_state, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -18,12 +18,7 @@ pub struct Axrom {
 
 impl Axrom {
     pub fn new(file: INesFile) -> Self {
-        Axrom {
-            prg_rom: file.prg_rom,
-            chr: Chr::new(file.chr_rom, file.chr_ram_size),
-            bank: 0,
-            upper_screen: false,
-        }
+        Axrom { prg_rom: file.prg_rom, chr: Chr::new(file.chr_rom, file.chr_ram_size), bank: 0, upper_screen: false }
     }
 }
 
@@ -32,7 +27,9 @@ impl Mapper for Axrom {
 
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
-            0x8000..=0xFFFF => Some(self.prg_rom[bank_index(self.prg_rom.len(), BANK_SIZE, self.bank, addr as usize - 0x8000)]),
+            0x8000..=0xFFFF => {
+                Some(self.prg_rom[bank_index(self.prg_rom.len(), BANK_SIZE, self.bank, addr as usize - 0x8000)])
+            }
             _ => None,
         }
     }
@@ -53,7 +50,11 @@ impl Mapper for Axrom {
     }
 
     fn mirroring(&self) -> Mirroring {
-        if self.upper_screen { Mirroring::SingleScreenUpper } else { Mirroring::SingleScreenLower }
+        if self.upper_screen {
+            Mirroring::SingleScreenUpper
+        } else {
+            Mirroring::SingleScreenLower
+        }
     }
 }
 

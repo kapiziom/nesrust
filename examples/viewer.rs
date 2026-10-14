@@ -24,8 +24,8 @@ use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 use nesrs::emulator::cartridge::Cartridge;
 use nesrs::emulator::controller::Buttons;
 use nesrs::emulator::nes::Nes;
-use nesrs::emulator::rewind::Rewind;
 use nesrs::emulator::ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use nesrs::emulator::rewind::Rewind;
 
 const KEY_MAP: [(Key, Buttons); 9] = [
     (Key::X, Buttons::A),
@@ -242,7 +242,10 @@ fn main() {
             stopped = false;
         }
 
-        let keyboard = KEY_MAP.iter().filter(|(key, _)| window.is_key_down(*key)).fold(Buttons::empty(), |all, (_, button)| all | *button);
+        let keyboard = KEY_MAP
+            .iter()
+            .filter(|(key, _)| window.is_key_down(*key))
+            .fold(Buttons::empty(), |all, (_, button)| all | *button);
         nes.set_buttons(0, keyboard | pad.poll());
 
         let fast_forward = window.is_key_down(Key::Tab);
@@ -319,7 +322,13 @@ fn main() {
             frames_counted = 0;
             fps_timer = Instant::now();
         }
-        let state = if stopped { " - CPU stopped" } else if paused { " - paused" } else { "" };
+        let state = if stopped {
+            " - CPU stopped"
+        } else if paused {
+            " - paused"
+        } else {
+            ""
+        };
         let new_title = format!("{name} ({region:?}, mapper {mapper}) - {fps:.0} fps{state}");
         if new_title != title {
             window.set_title(&new_title);
@@ -423,9 +432,15 @@ impl AudioOutput {
         eprintln!("audio: {sample_rate} Hz, {channels} channels, {format:?}");
 
         let stream = match format {
-            cpal::SampleFormat::F32 => Self::build_stream::<f32>(&device, config, channels, queue.clone(), consumed.clone()),
-            cpal::SampleFormat::I16 => Self::build_stream::<i16>(&device, config, channels, queue.clone(), consumed.clone()),
-            cpal::SampleFormat::U16 => Self::build_stream::<u16>(&device, config, channels, queue.clone(), consumed.clone()),
+            cpal::SampleFormat::F32 => {
+                Self::build_stream::<f32>(&device, config, channels, queue.clone(), consumed.clone())
+            }
+            cpal::SampleFormat::I16 => {
+                Self::build_stream::<i16>(&device, config, channels, queue.clone(), consumed.clone())
+            }
+            cpal::SampleFormat::U16 => {
+                Self::build_stream::<u16>(&device, config, channels, queue.clone(), consumed.clone())
+            }
             other => {
                 eprintln!("unsupported audio sample format {other:?}");
                 None

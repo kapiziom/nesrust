@@ -57,7 +57,11 @@ impl Pulse {
     }
 
     fn output(&self) -> u8 {
-        if self.enabled && (self.constant || self.phase <= self.duty) { self.volume } else { 0 }
+        if self.enabled && (self.constant || self.phase <= self.duty) {
+            self.volume
+        } else {
+            0
+        }
     }
 }
 
@@ -106,7 +110,11 @@ impl Saw {
     }
 
     fn output(&self) -> u8 {
-        if self.enabled { self.accumulator >> 3 } else { 0 }
+        if self.enabled {
+            self.accumulator >> 3
+        } else {
+            0
+        }
     }
 }
 
@@ -183,7 +191,11 @@ impl Vrc6 {
     /// The register (0-3) selected by A1/A0 of the address.
     fn register(&self, addr: u16) -> u16 {
         let register = addr & 3;
-        if self.swap_address_lines { ((register & 1) << 1) | (register >> 1) } else { register }
+        if self.swap_address_lines {
+            ((register & 1) << 1) | (register >> 1)
+        } else {
+            register
+        }
     }
 
     fn prg_index(&self, addr: u16) -> usize {
@@ -401,7 +413,11 @@ mod tests {
         let mut distinct: Vec<u8> = levels.clone();
         distinct.dedup();
 
-        assert_eq!(&distinct[..8], &[0, 1, 2, 3, 4, 5, 6, 0], "6 climbs of rate/8 = 1, then back to 0 at the 14th step");
+        assert_eq!(
+            &distinct[..8],
+            &[0, 1, 2, 3, 4, 5, 6, 0],
+            "6 climbs of rate/8 = 1, then back to 0 at the 14th step"
+        );
     }
 
     #[test]

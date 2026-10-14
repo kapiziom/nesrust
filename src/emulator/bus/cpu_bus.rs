@@ -57,37 +57,28 @@ pub trait CpuBus {
     }
 }
 
-
 impl CpuBus for Bus {
     fn read(&mut self, addr: u16) -> u8 {
         let value = match addr {
             // Internal RAM + mirroring
-            0x0000..=0x1FFF => {
-                self.ram.read(addr & 0x07FF)
-            }
+            0x0000..=0x1FFF => self.ram.read(addr & 0x07FF),
             // PPU registers + mirroring
-            0x2000..=0x3FFF => {
-                self.ppu.read_register(addr & 0x7, &mut self.cartridge)
-            }
+            0x2000..=0x3FFF => self.ppu.read_register(addr & 0x7, &mut self.cartridge),
             // APU status. Bit 5 is open bus, and reading it does not disturb the CPU's data bus latch.
             0x4015 => {
                 return (self.apu.read_status() & !0x20) | (self.last_bus_value & 0x20);
             }
             // other APU registers are write-only
-            0x4000..=0x4014 => {
-                self.last_bus_value
-            }
+            0x4000..=0x4014 => self.last_bus_value,
             // Controller registers: the data is on bit 0, the upper bits are not driven (open bus, usually $40)
             0x4016..=0x4017 => {
                 let port = (addr & 1) as usize;
                 (self.last_bus_value & 0xE0) | self.controllers[port].read()
             }
             // Cartridge: expansion area, PRG-RAM and PRG-ROM; nothing driving the bus means open bus
-            0x4020..=0xFFFF => {
-                self.cartridge.cpu_read(addr).unwrap_or(self.last_bus_value)
-            }
+            0x4020..=0xFFFF => self.cartridge.cpu_read(addr).unwrap_or(self.last_bus_value),
             // $4018-$401F: disabled test registers
-            _ => self.last_bus_value
+            _ => self.last_bus_value,
         };
 
         self.last_bus_value = value;
@@ -125,9 +116,7 @@ impl CpuBus for Bus {
                 self.apu.write_register(addr, data);
             }
             // Cartridge: expansion area, PRG-RAM and mapper registers
-            0x4020..=0xFFFF => {
-                self.cartridge.cpu_write(addr, data)
-            }
+            0x4020..=0xFFFF => self.cartridge.cpu_write(addr, data),
             _ => {}
         }
     }

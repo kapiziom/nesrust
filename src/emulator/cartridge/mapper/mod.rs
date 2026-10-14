@@ -18,9 +18,9 @@ mod vrc6;
 mod vrc_irq;
 
 use super::ines::{CartridgeError, INesFile};
+use super::mirroring::Mirroring;
 #[cfg(test)]
 use crate::emulator::region::Region;
-use super::mirroring::Mirroring;
 
 pub trait Mapper {
     /// CPU read in $4020-$FFFF. `None` means nothing drives the bus (open bus).
@@ -103,8 +103,8 @@ macro_rules! mapper_state {
         }
 
         fn load_state(&mut self, data: &[u8]) -> Result<(), $crate::emulator::cartridge::mapper::StateError> {
-            let mut restored: Self = postcard::from_bytes(data)
-                .map_err(|_| $crate::emulator::cartridge::mapper::StateError::Corrupt)?;
+            let mut restored: Self =
+                postcard::from_bytes(data).map_err(|_| $crate::emulator::cartridge::mapper::StateError::Corrupt)?;
             restored.prg_rom = std::mem::take(&mut self.prg_rom);
             restored.chr.rom = std::mem::take(&mut self.chr.rom);
             *self = restored;
@@ -158,7 +158,11 @@ impl Chr {
     }
 
     fn data(&self) -> &[u8] {
-        if self.rom.is_empty() { &self.ram } else { &self.rom }
+        if self.rom.is_empty() {
+            &self.ram
+        } else {
+            &self.rom
+        }
     }
 
     fn read(&self, index: usize) -> u8 {

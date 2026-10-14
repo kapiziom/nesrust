@@ -2,7 +2,7 @@
 //! Color Dreams (11), GxROM (66), NINA-003/006 (79), Mapper 87, Jaleco JF-11/14 (140), Bandai 74161 (152) and
 //! reversed UxROM (180). Bus conflicts are not emulated.
 
-use super::{mapper_state, bank_index, Chr, Mapper};
+use super::{bank_index, mapper_state, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -86,7 +86,8 @@ impl Discrete {
             (Board::Mapper152, 0x8000..=0xFFFF) => {
                 self.prg_bank = ((data >> 4) & 0x07) as usize;
                 self.chr_bank = (data & 0x0F) as usize;
-                self.mirroring = if data & 0x80 != 0 { Mirroring::SingleScreenUpper } else { Mirroring::SingleScreenLower };
+                self.mirroring =
+                    if data & 0x80 != 0 { Mirroring::SingleScreenUpper } else { Mirroring::SingleScreenLower };
             }
             (Board::Mapper180, 0x8000..=0xFFFF) => self.prg_bank = data as usize,
             _ => {}

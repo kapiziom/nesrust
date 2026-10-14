@@ -39,7 +39,11 @@ impl Noise {
 
 impl Noise {
     fn periods(&self) -> &'static [u16; 16] {
-        if self.pal { &PAL_PERIODS } else { &NTSC_PERIODS }
+        if self.pal {
+            &PAL_PERIODS
+        } else {
+            &NTSC_PERIODS
+        }
     }
 
     /// `register` is 0-3 (the offset from $400C); 1 is unused.
@@ -93,7 +97,11 @@ impl Noise {
 
     /// 0-15.
     pub fn output(&self) -> u8 {
-        if self.lfsr & 1 != 0 || !self.length.active() { 0 } else { self.envelope.output() }
+        if self.lfsr & 1 != 0 || !self.length.active() {
+            0
+        } else {
+            self.envelope.output()
+        }
     }
 }
 

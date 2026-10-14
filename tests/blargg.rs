@@ -50,9 +50,9 @@ const ALTERNATE_CORRECT_RESULTS: &[(&str, &[&str])] = &[
 ];
 
 fn is_alternate_correct_result(path: &Path, screen: &str) -> bool {
-    ALTERNATE_CORRECT_RESULTS
-        .iter()
-        .any(|(suffix, checksums)| path.to_string_lossy().ends_with(suffix) && checksums.iter().any(|crc| screen.contains(crc)))
+    ALTERNATE_CORRECT_RESULTS.iter().any(|(suffix, checksums)| {
+        path.to_string_lossy().ends_with(suffix) && checksums.iter().any(|crc| screen.contains(crc))
+    })
 }
 
 /// ROMs (path relative to ROM_DIR) that currently pass and must keep passing.
@@ -181,10 +181,18 @@ const MUST_PASS: &[&str] = &[
 #[derive(Debug, PartialEq)]
 enum Outcome {
     Passed,
-    Failed { code: u8, text: String },
+    Failed {
+        code: u8,
+        text: String,
+    },
     /// The ROM never wrote the $6000 signature (older ROMs report on screen instead); holds the on-screen text.
-    NoResult { screen: String },
-    CpuStopped { pc: u16, opcode: u8 },
+    NoResult {
+        screen: String,
+    },
+    CpuStopped {
+        pc: u16,
+        opcode: u8,
+    },
     NotLoadable(String),
 }
 
@@ -286,7 +294,9 @@ fn screen_text(nes: &Nes) -> String {
     let nametable = &nes.bus().ppu().nametable_ram()[..960];
     let lines: Vec<String> = nametable
         .chunks(32)
-        .map(|row| row.iter().map(|&tile| if (0x20..0x7F).contains(&tile) { tile as char } else { ' ' }).collect::<String>())
+        .map(|row| {
+            row.iter().map(|&tile| if (0x20..0x7F).contains(&tile) { tile as char } else { ' ' }).collect::<String>()
+        })
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
         .collect();

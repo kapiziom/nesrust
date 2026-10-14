@@ -76,7 +76,11 @@ impl Dmc {
 
 impl Dmc {
     fn rates(&self) -> &'static [u16; 16] {
-        if self.pal { &PAL_RATES } else { &NTSC_RATES }
+        if self.pal {
+            &PAL_RATES
+        } else {
+            &NTSC_RATES
+        }
     }
 
     /// `register` is 0-3 (the offset from $4010).

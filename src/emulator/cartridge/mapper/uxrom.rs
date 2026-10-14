@@ -1,7 +1,7 @@
 //! Mapper 2 (UxROM): switchable 16KB bank at $8000, last bank fixed at $C000, usually CHR-RAM.
 //! https://www.nesdev.org/wiki/UxROM
 
-use super::{mapper_state, bank_index, Chr, Mapper};
+use super::{bank_index, mapper_state, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 

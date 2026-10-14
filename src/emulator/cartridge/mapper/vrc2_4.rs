@@ -3,7 +3,7 @@
 //! address lines. https://www.nesdev.org/wiki/VRC2_and_VRC4
 
 use super::vrc_irq::VrcIrq;
-use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
+use super::{bank_index, mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -75,7 +75,11 @@ impl Vrc2_4 {
     fn chr_bank(&self, addr: u16) -> usize {
         let bank = self.chr_banks[(addr as usize >> 10) & 7];
         // VRC2a (mapper 22) wires the CHR bank register one bit lower
-        if self.mapper == 22 { (bank >> 1) as usize } else { bank as usize }
+        if self.mapper == 22 {
+            (bank >> 1) as usize
+        } else {
+            bank as usize
+        }
     }
 
     fn write_chr_register(&mut self, addr: u16, data: u8) {
