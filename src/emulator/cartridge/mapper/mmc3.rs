@@ -1,7 +1,7 @@
 //! Mapper 4 (MMC3, TxROM): 8KB PRG banks, 1KB/2KB CHR banks and a scanline counter clocked by PPU address line A12.
 //! https://www.nesdev.org/wiki/MMC3
 
-use super::{Chr, Mapper, PrgRam};
+use super::{mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -10,7 +10,9 @@ const CHR_BANK_SIZE: usize = 1024;
 /// A12 must have been low for this many CPU cycles before a rising edge counts (filters the PPU's rapid toggling).
 const A12_LOW_CYCLES_REQUIRED: u8 = 3;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Mmc3 {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -132,6 +134,8 @@ impl Mmc3 {
 }
 
 impl Mapper for Mmc3 {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF if self.ram_enabled => self.prg_ram.read(addr as usize - 0x6000),

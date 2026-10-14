@@ -1,11 +1,13 @@
 //! Mapper 0 (NROM): no bank switching. 16KB PRG is mirrored into both halves.
 //! https://www.nesdev.org/wiki/NROM
 
-use super::{Chr, Mapper, PrgRam};
+use super::{mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Nrom {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -24,6 +26,8 @@ impl Nrom {
 }
 
 impl Mapper for Nrom {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF => self.prg_ram.read(addr as usize - 0x6000),

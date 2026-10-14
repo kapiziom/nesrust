@@ -54,7 +54,56 @@ pub trait Mapper {
 
     /// Restores battery-backed PRG-RAM (e.g. from a `.sav` file); extra or missing bytes are ignored.
     fn load_battery_ram(&mut self, _data: &[u8]) {}
+
+    /// The mapper's registers and RAM (not the ROM, which the cartridge file provides) for save states.
+    fn save_state(&self) -> Vec<u8>;
+
+    /// Restores what `save_state` returned for the same cartridge.
+    fn load_state(&mut self, data: &[u8]) -> Result<(), StateError>;
 }
+
+/// A save state could not be restored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StateError {
+    /// The bytes are not a state of this console (truncated or damaged).
+    Corrupt,
+    /// Saved by an incompatible version of the emulator.
+    WrongVersion,
+    /// Saved while running another cartridge.
+    WrongCartridge,
+}
+
+impl std::fmt::Display for StateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateError::Corrupt => write!(f, "the save state is corrupt"),
+            StateError::WrongVersion => write!(f, "the save state was made by another version of the emulator"),
+            StateError::WrongCartridge => write!(f, "the save state belongs to another cartridge"),
+        }
+    }
+}
+
+impl std::error::Error for StateError {}
+
+/// Implements `save_state`/`load_state` for a mapper struct that derives serde and keeps its ROM in `#[serde(skip)]`
+/// fields: the CHR-ROM (inside `chr`) and `prg_rom` are taken over from the running mapper.
+macro_rules! mapper_state {
+    () => {
+        fn save_state(&self) -> Vec<u8> {
+            postcard::to_allocvec(self).expect("serializing into a Vec cannot fail")
+        }
+
+        fn load_state(&mut self, data: &[u8]) -> Result<(), $crate::emulator::cartridge::mapper::StateError> {
+            let mut restored: Self = postcard::from_bytes(data)
+                .map_err(|_| $crate::emulator::cartridge::mapper::StateError::Corrupt)?;
+            restored.prg_rom = std::mem::take(&mut self.prg_rom);
+            restored.chr.rom = std::mem::take(&mut self.chr.rom);
+            *self = restored;
+            Ok(())
+        }
+    };
+}
+pub(crate) use mapper_state;
 
 pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
     Ok(match file.mapper {
@@ -81,45 +130,54 @@ fn bank_index(len: usize, bank_size: usize, bank: usize, offset: usize) -> usize
     ((bank % banks) * bank_size + offset) % len
 }
 
-/// Pattern table memory: CHR-ROM, or CHR-RAM when the cartridge has no CHR-ROM.
+/// Pattern table memory: CHR-ROM, or CHR-RAM when the cartridge has no CHR-ROM. Only the RAM is part of a save state.
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Chr {
-    data: Vec<u8>,
-    writable: bool,
+    #[serde(skip)]
+    rom: Vec<u8>,
+    ram: Vec<u8>,
 }
 
 impl Chr {
     fn new(chr_rom: Vec<u8>, chr_ram_size: usize) -> Self {
         if chr_rom.is_empty() {
-            Chr { data: vec![0; chr_ram_size.max(1)], writable: true }
+            Chr { rom: Vec::new(), ram: vec![0; chr_ram_size.max(1)] }
         } else {
-            Chr { data: chr_rom, writable: false }
+            Chr { rom: chr_rom, ram: Vec::new() }
         }
     }
 
+    fn data(&self) -> &[u8] {
+        if self.rom.is_empty() { &self.ram } else { &self.rom }
+    }
+
     fn read(&self, index: usize) -> u8 {
-        self.data[index % self.data.len()]
+        let data = self.data();
+        data[index % data.len()]
     }
 
     fn read_banked(&self, bank_size: usize, bank: usize, offset: usize) -> u8 {
-        self.data[bank_index(self.data.len(), bank_size, bank, offset)]
+        let data = self.data();
+        data[bank_index(data.len(), bank_size, bank, offset)]
     }
 
     fn write(&mut self, index: usize, value: u8) {
-        if self.writable {
-            let len = self.data.len();
-            self.data[index % len] = value;
+        if self.rom.is_empty() {
+            let len = self.ram.len();
+            self.ram[index % len] = value;
         }
     }
 
     fn write_banked(&mut self, bank_size: usize, bank: usize, offset: usize, value: u8) {
-        if self.writable {
-            let index = bank_index(self.data.len(), bank_size, bank, offset);
-            self.data[index] = value;
+        if self.rom.is_empty() {
+            let index = bank_index(self.ram.len(), bank_size, bank, offset);
+            self.ram[index] = value;
         }
     }
 }
 
 /// PRG-RAM at $6000-$7FFF.
+#[derive(serde::Serialize, serde::Deserialize)]
 struct PrgRam {
     data: Vec<u8>,
     battery: bool,
@@ -188,6 +246,57 @@ mod tests {
     #[test]
     fn unsupported_mapper_is_an_error() {
         assert!(matches!(create(file(5, 2, 1)), Err(CartridgeError::UnsupportedMapper(5))));
+    }
+
+    const ALL_MAPPERS: [u16; 23] =
+        [0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 25, 34, 66, 69, 71, 79, 87, 140, 152, 180, 206];
+
+    /// Reads that change nothing but show the banking, the RAM and the latches.
+    fn fingerprint(mapper: &mut dyn Mapper) -> Vec<u8> {
+        let mut seen = Vec::new();
+        for addr in (0x6000u16..=0xFFFF).step_by(0x207) {
+            seen.push(mapper.cpu_read(addr).unwrap_or(0xFF));
+        }
+        for addr in (0u16..0x2000).step_by(0x1D3) {
+            seen.push(mapper.ppu_read(addr));
+        }
+        seen.push(mapper.mirroring() as u8);
+        seen.push(mapper.irq_pending() as u8);
+        seen
+    }
+
+    #[test]
+    fn every_mapper_restores_its_registers_and_ram_from_a_save_state() {
+        for id in ALL_MAPPERS {
+            let mut original = create(file(id, 16, 16)).unwrap();
+            // a mix of register writes, RAM writes and pattern accesses that move the mapper away from power-up
+            for (step, addr) in (0x6000u16..=0xFFFF).step_by(0x111).enumerate() {
+                original.cpu_write(addr, (step * 7 + 3) as u8);
+                original.ppu_read(((step * 0x91) & 0x1FFF) as u16);
+                original.cpu_cycle();
+            }
+            let saved = original.save_state();
+
+            let mut restored = create(file(id, 16, 16)).unwrap();
+            restored.load_state(&saved).unwrap_or_else(|e| panic!("mapper {id}: {e}"));
+
+            assert_eq!(fingerprint(&mut *restored), fingerprint(&mut *original), "mapper {id}");
+            assert_eq!(restored.save_state(), saved, "mapper {id}: the state round-trips");
+            assert!(restored.load_state(&saved[..saved.len() / 2]).is_err(), "mapper {id}: truncated state");
+        }
+    }
+
+    #[test]
+    fn chr_ram_contents_are_part_of_the_state_but_chr_rom_is_not() {
+        let mut ram = create(file(2, 4, 0)).unwrap(); // UxROM with CHR-RAM
+        ram.ppu_write(0x0123, 0x77);
+        let state = ram.save_state();
+        let mut restored = create(file(2, 4, 0)).unwrap();
+        restored.load_state(&state).unwrap();
+        assert_eq!(restored.ppu_read(0x0123), 0x77);
+
+        let rom = create(file(3, 2, 2)).unwrap(); // CNROM with CHR-ROM
+        assert!(rom.save_state().len() < 16, "the 16KB of CHR-ROM is not saved");
     }
 
     #[test]

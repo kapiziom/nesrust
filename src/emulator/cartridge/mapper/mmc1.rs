@@ -1,7 +1,7 @@
 //! Mapper 1 (MMC1, SxROM): five serial writes load one of four 5-bit registers.
 //! https://www.nesdev.org/wiki/MMC1
 
-use super::{Chr, Mapper, PrgRam};
+use super::{mapper_state, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -12,7 +12,9 @@ const PRG_WINDOW: usize = 256 * 1024;
 /// A set bit 4 marks the start of the shift register; when it reaches bit 0 the fifth write has arrived.
 const SHIFT_RESET: u8 = 0x10;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Mmc1 {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -103,6 +105,8 @@ impl Mmc1 {
 }
 
 impl Mapper for Mmc1 {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF if self.prg_bank & 0x10 == 0 => self.prg_ram.read(addr as usize - 0x6000),

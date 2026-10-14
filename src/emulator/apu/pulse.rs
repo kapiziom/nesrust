@@ -10,7 +10,7 @@ const DUTY: [[u8; 8]; 4] = [
     [1, 0, 0, 1, 1, 1, 1, 1],
 ];
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 struct Sweep {
     enabled: bool,
     period: u8,
@@ -20,7 +20,7 @@ struct Sweep {
     reload: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Pulse {
     /// Pulse 1 negates the sweep with one's complement, pulse 2 with two's complement.
     ones_complement: bool,

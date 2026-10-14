@@ -13,7 +13,7 @@ const ATTR_FLIP_HORIZONTAL: u8 = 0x40;
 const ATTR_FLIP_VERTICAL: u8 = 0x80;
 
 /// One of the eight sprite units for the scanline being drawn.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct Sprite {
     pattern_lo: u8,
     pattern_hi: u8,

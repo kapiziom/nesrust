@@ -2,14 +2,16 @@
 //! 1KB CHR banks, 8KB PRG banks (also at $6000, optionally RAM), mirroring and a CPU-cycle IRQ counter.
 //! The expansion sound of the 5B is not emulated. https://www.nesdev.org/wiki/Sunsoft_FME-7
 
-use super::{bank_index, Chr, Mapper, PrgRam};
+use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const PRG_8K: usize = 8 * 1024;
 const CHR_1K: usize = 1024;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Fme7 {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -79,6 +81,8 @@ impl Fme7 {
 }
 
 impl Mapper for Fme7 {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF => {

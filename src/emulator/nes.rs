@@ -1,8 +1,32 @@
 use crate::emulator::bus::Bus;
-use crate::emulator::cartridge::Cartridge;
+use crate::emulator::cartridge::{Cartridge, StateError};
 use crate::emulator::controller::Buttons;
 use crate::emulator::cpu::{CpuState, CPU};
 use crate::emulator::region::Region;
+
+const STATE_MAGIC: [u8; 4] = *b"NSST";
+/// Bump when the layout of any serialized struct changes.
+const STATE_VERSION: u16 = 1;
+
+#[derive(serde::Serialize)]
+struct SaveStateOut<'a> {
+    magic: [u8; 4],
+    version: u16,
+    mapper_id: u16,
+    rom_checksum: u32,
+    cpu: &'a CPU<Bus>,
+    mapper: Vec<u8>,
+}
+
+#[derive(serde::Deserialize)]
+struct SaveStateIn {
+    magic: [u8; 4],
+    version: u16,
+    mapper_id: u16,
+    rom_checksum: u32,
+    cpu: CPU<Bus>,
+    mapper: Vec<u8>,
+}
 
 /// The whole console: a CPU wired to the bus (RAM, PPU, cartridge).
 /// This is the entry point a frontend or a test runner uses.
@@ -35,6 +59,46 @@ impl Nes {
                 return true;
             }
         }
+    }
+
+    /// Everything that makes up the console's state (CPU, RAM, PPU, APU, controllers, mapper registers and RAM), but
+    /// not the ROM: it can only be loaded back into the same game.
+    pub fn save_state(&self) -> Vec<u8> {
+        let cartridge = &self.cpu.bus.cartridge;
+        let state = SaveStateOut {
+            magic: STATE_MAGIC,
+            version: STATE_VERSION,
+            mapper_id: cartridge.mapper_id(),
+            rom_checksum: cartridge.rom_checksum(),
+            cpu: &self.cpu,
+            mapper: cartridge.save_state(),
+        };
+        postcard::to_allocvec(&state).expect("serializing into a Vec cannot fail")
+    }
+
+    /// Restores a state from `save_state`. On error the console is left as it was.
+    /// The audio output rate, the palette and the picture of the running console are kept.
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), StateError> {
+        let state: SaveStateIn = postcard::from_bytes(data).map_err(|_| StateError::Corrupt)?;
+        let cartridge = &mut self.cpu.bus.cartridge;
+
+        if state.magic != STATE_MAGIC {
+            return Err(StateError::Corrupt);
+        }
+        if state.version != STATE_VERSION {
+            return Err(StateError::WrongVersion);
+        }
+        if state.mapper_id != cartridge.mapper_id() || state.rom_checksum != cartridge.rom_checksum() {
+            return Err(StateError::WrongCartridge);
+        }
+
+        // the mapper only replaces itself when its bytes are valid
+        cartridge.load_state(&state.mapper)?;
+
+        let mut cpu = state.cpu;
+        cpu.bus.take_runtime_from(&mut self.cpu.bus);
+        self.cpu = cpu;
+        Ok(())
     }
 
     /// Sets the buttons held on controller `port` (0 = $4016, 1 = $4017); they stay held until changed.

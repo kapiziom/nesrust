@@ -1,13 +1,15 @@
 //! Mapper 7 (AxROM): 32KB PRG banks, single-screen mirroring selected by a register, CHR-RAM.
 //! https://www.nesdev.org/wiki/AxROM
 
-use super::{bank_index, Chr, Mapper};
+use super::{mapper_state, bank_index, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const BANK_SIZE: usize = 32 * 1024;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Axrom {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     chr: Chr,
     bank: usize,
@@ -26,6 +28,8 @@ impl Axrom {
 }
 
 impl Mapper for Axrom {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x8000..=0xFFFF => Some(self.prg_rom[bank_index(self.prg_rom.len(), BANK_SIZE, self.bank, addr as usize - 0x8000)]),

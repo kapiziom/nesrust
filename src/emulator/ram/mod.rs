@@ -1,5 +1,7 @@
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct RAM {
-    memory: [u8; 0x800] // 2KB RAM
+    #[serde(with = "serde_big_array::BigArray")]
+    memory: [u8; 0x800], // 2KB RAM
 }
 
 impl RAM {

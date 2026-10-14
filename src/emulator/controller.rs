@@ -3,7 +3,7 @@
 
 bitflags::bitflags! {
     /// Pressed buttons, in the order the controller shifts them out (bit 0 first).
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
     pub struct Buttons: u8 {
         const A      = 0b0000_0001;
         const B      = 0b0000_0010;
@@ -16,7 +16,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Controller {
     buttons: Buttons,
     strobe: bool,

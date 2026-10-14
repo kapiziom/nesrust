@@ -7,9 +7,9 @@ use crate::emulator::region::Region;
 const NTSC_PERIODS: [u16; 16] = [4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068];
 const PAL_PERIODS: [u16; 16] = [4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708, 944, 1890, 3778];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Noise {
-    periods: &'static [u16; 16],
+    pal: bool,
     timer: Timer,
     lfsr: u16,
     short_mode: bool,
@@ -27,7 +27,7 @@ impl Noise {
     pub fn new(region: Region) -> Self {
         let periods = if region == Region::Pal { &PAL_PERIODS } else { &NTSC_PERIODS };
         Noise {
-            periods,
+            pal: region == Region::Pal,
             timer: Timer::with_period(periods[0] - 1),
             lfsr: 1,
             short_mode: false,
@@ -38,6 +38,10 @@ impl Noise {
 }
 
 impl Noise {
+    fn periods(&self) -> &'static [u16; 16] {
+        if self.pal { &PAL_PERIODS } else { &NTSC_PERIODS }
+    }
+
     /// `register` is 0-3 (the offset from $400C); 1 is unused.
     pub fn write(&mut self, register: u16, data: u8) {
         match register {
@@ -48,7 +52,7 @@ impl Noise {
             2 => {
                 self.short_mode = data & 0x80 != 0;
                 // a clock every `periods[n]` CPU cycles
-                self.timer.period = self.periods[data as usize & 0x0F] - 1;
+                self.timer.period = self.periods()[data as usize & 0x0F] - 1;
             }
             3 => {
                 self.length.load(data >> 3);

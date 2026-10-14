@@ -11,13 +11,27 @@ use mapper::Mapper;
 
 use crate::emulator::region::Region;
 
+pub use mapper::StateError;
+
 pub struct Cartridge {
     mapper: Box<dyn Mapper>,
     mapper_id: u16,
     region: Region,
+    /// Identifies the ROM contents so a save state is only loaded into the game it was made with.
+    rom_checksum: u32,
+}
+
+fn checksum<'a>(bytes: impl Iterator<Item = &'a u8>) -> u32 {
+    bytes.fold(0x811C_9DC5u32, |hash, &byte| (hash ^ byte as u32).wrapping_mul(0x0100_0193))
 }
 
 impl Cartridge {
+    /// An empty NROM cartridge that stands in for the real one while a save state is being deserialized.
+    pub(crate) fn placeholder() -> Self {
+        Self::from_bytes(&[b'N', b'E', b'S', 0x1A, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].iter().copied().chain(std::iter::repeat(0).take(16 * 1024)).collect::<Vec<u8>>())
+            .expect("a minimal NROM file is valid")
+    }
+
     /// Parses an iNES / NES 2.0 file and attaches its mapper.
     pub fn from_bytes(data: &[u8]) -> Result<Self, CartridgeError> {
         Self::from_ines(INesFile::parse(data)?)
@@ -26,7 +40,22 @@ impl Cartridge {
     pub fn from_ines(file: INesFile) -> Result<Self, CartridgeError> {
         let mapper_id = file.mapper;
         let region = file.region;
-        Ok(Cartridge { mapper: mapper::create(file)?, mapper_id, region })
+        let rom_checksum = checksum(file.prg_rom.iter().chain(&file.chr_rom));
+        Ok(Cartridge { mapper: mapper::create(file)?, mapper_id, region, rom_checksum })
+    }
+
+    /// FNV-1a hash of the PRG and CHR ROM; save states carry it to detect a different game.
+    pub fn rom_checksum(&self) -> u32 {
+        self.rom_checksum
+    }
+
+    /// The mapper's registers and RAM (see `Nes::save_state`).
+    pub fn save_state(&self) -> Vec<u8> {
+        self.mapper.save_state()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), StateError> {
+        self.mapper.load_state(data)
     }
 
     pub fn mapper_id(&self) -> u16 {

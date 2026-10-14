@@ -1,14 +1,16 @@
 //! Mapper 34: BNROM (32KB PRG bank register, CHR-RAM) and NINA-001 (PRG-RAM plus registers at $7FFD-$7FFF, CHR-ROM).
 //! https://www.nesdev.org/wiki/INES_Mapper_034
 
-use super::{bank_index, Chr, Mapper, PrgRam};
+use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const PRG_32K: usize = 32 * 1024;
 const CHR_4K: usize = 4 * 1024;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Bnrom {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -35,6 +37,8 @@ impl Bnrom {
 }
 
 impl Mapper for Bnrom {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF => self.prg_ram.read(addr as usize - 0x6000),

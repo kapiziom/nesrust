@@ -1,7 +1,7 @@
 //! NTSC and PAL consoles differ in clock speeds, PPU geometry and a few APU tables.
 //! https://www.nesdev.org/wiki/Cycle_reference_chart
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Region {
     #[default]
     Ntsc,

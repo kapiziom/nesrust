@@ -2,13 +2,15 @@
 //! The BF9097 variant also has a single-screen select in $8000-$9FFF.
 //! https://www.nesdev.org/wiki/INES_Mapper_071
 
-use super::{bank_index, Chr, Mapper};
+use super::{mapper_state, bank_index, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const PRG_16K: usize = 16 * 1024;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Camerica {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     chr: Chr,
     mirroring: Mirroring,
@@ -27,6 +29,8 @@ impl Camerica {
 }
 
 impl Mapper for Camerica {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         let len = self.prg_rom.len();
         match addr {

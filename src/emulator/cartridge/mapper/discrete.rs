@@ -2,7 +2,7 @@
 //! Color Dreams (11), GxROM (66), NINA-003/006 (79), Mapper 87, Jaleco JF-11/14 (140), Bandai 74161 (152) and
 //! reversed UxROM (180). Bus conflicts are not emulated.
 
-use super::{bank_index, Chr, Mapper};
+use super::{mapper_state, bank_index, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -10,7 +10,7 @@ const PRG_32K: usize = 32 * 1024;
 const PRG_16K: usize = 16 * 1024;
 const CHR_8K: usize = 8 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Board {
     /// $8000-$FFFF: bits 0-1 select the 32KB PRG bank, bits 4-7 the 8KB CHR bank.
     ColorDreams,
@@ -28,8 +28,10 @@ enum Board {
     Mapper180,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Discrete {
     board: Board,
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     chr: Chr,
     mirroring: Mirroring,
@@ -93,6 +95,8 @@ impl Discrete {
 }
 
 impl Mapper for Discrete {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         if addr < 0x8000 {
             return None;

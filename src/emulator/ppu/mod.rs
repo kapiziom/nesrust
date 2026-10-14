@@ -45,6 +45,7 @@ const POWER_UP_PALETTE: [u8; 32] = [
     0x03, 0x00, 0x04, 0x00, 0x14, 0x08, 0x3A, 0x00, 0x02, 0x00, 0x20, 0x2C, 0x08,
 ];
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PPU {
     region: Region,
 
@@ -70,8 +71,10 @@ pub struct PPU {
     latch_stamps: [u64; 8],
 
     // memory
+    #[serde(with = "serde_big_array::BigArray")]
     vram: [u8; 4096],
     palette_ram: [u8; 32],
+    #[serde(with = "serde_big_array::BigArray")]
     oam: [u8; 256],
 
     // timing
@@ -106,8 +109,12 @@ pub struct PPU {
     sprite_count: usize,
 
     // output
+    // the picture and the user's palette are not console state: a loaded state keeps the running ones
+    #[serde(skip)]
     palette: Palette,
+    #[serde(skip)]
     framebuffer: Vec<u8>,
+    #[serde(skip)]
     color_indices: Vec<u8>,
 }
 
@@ -166,6 +173,13 @@ impl PPU {
             framebuffer: vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 4],
             color_indices: vec![0; SCREEN_WIDTH * SCREEN_HEIGHT],
         }
+    }
+
+    /// After a save state was loaded: keeps the palette and the picture of the console that was running.
+    pub(crate) fn take_output_from(&mut self, running: &mut PPU) {
+        self.palette = std::mem::take(&mut running.palette);
+        self.framebuffer = std::mem::take(&mut running.framebuffer);
+        self.color_indices = std::mem::take(&mut running.color_indices);
     }
 
     pub fn set_palette(&mut self, palette: Palette) {

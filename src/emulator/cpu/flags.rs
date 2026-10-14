@@ -17,7 +17,7 @@ use crate::emulator::bus::cpu_bus::CpuBus;
 use crate::emulator::cpu::CPU;
 
 bitflags::bitflags! {
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
     pub struct CpuFlags: u8 {
         const CARRY = 0b0000_0001;
         const ZERO = 0b0000_0010;

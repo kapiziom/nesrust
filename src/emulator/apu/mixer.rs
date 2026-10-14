@@ -35,13 +35,13 @@ impl Mixer {
 }
 
 /// A first-order filter.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Kind {
     HighPass { alpha: f32 },
     LowPass { alpha: f32 },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct Filter {
     kind: Kind,
     previous_input: f32,
@@ -74,7 +74,7 @@ impl Filter {
 
 /// The console's output stage: two high-pass filters (90 Hz and 440 Hz) and a 14 kHz low-pass filter,
 /// which remove the DC offset and the harshest highs. Runs at the output sample rate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OutputFilter {
     stages: [Filter; 3],
 }

@@ -2,13 +2,13 @@
 //! switched by latches which watch the PPU's pattern fetches of the "$FD" and "$FE" tiles.
 //! https://www.nesdev.org/wiki/MMC2, https://www.nesdev.org/wiki/MMC4
 
-use super::{bank_index, Chr, Mapper, PrgRam};
+use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const CHR_4K: usize = 4 * 1024;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 enum Variant {
     /// 8KB switchable PRG bank at $8000, the last three 8KB banks fixed.
     Mmc2,
@@ -16,8 +16,10 @@ enum Variant {
     Mmc4,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Mmc2 {
     variant: Variant,
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -85,6 +87,8 @@ impl Mmc2 {
 }
 
 impl Mapper for Mmc2 {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF => self.prg_ram.read(addr as usize - 0x6000),

@@ -2,7 +2,7 @@
 
 use super::units::{LengthCounter, Timer};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Triangle {
     /// The 11-bit period register; the sequencer advances every `period + 1` CPU cycles.
     raw_period: u16,

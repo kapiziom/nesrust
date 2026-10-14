@@ -7,7 +7,7 @@ pub const LENGTH_TABLE: [u8; 32] = [
 ];
 
 /// A down-counter clocked once per CPU cycle: it fires every `period + 1` cycles.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Timer {
     pub period: u16,
     counter: u16,
@@ -39,7 +39,7 @@ impl Timer {
 /// Writes (a load, or a change of the halt flag) are committed at the end of the CPU cycle, after the frame
 /// counter has had its chance to clock the counter in that same cycle: a load that coincides with a clock of a
 /// running counter is ignored, and a halt change only affects the clocks that come after it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LengthCounter {
     value: u8,
     halt: bool,
@@ -107,7 +107,7 @@ impl LengthCounter {
 }
 
 /// Volume envelope of the pulse and noise channels.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Envelope {
     start: bool,
     divider: u8,

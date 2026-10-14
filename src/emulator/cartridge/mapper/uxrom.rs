@@ -1,13 +1,15 @@
 //! Mapper 2 (UxROM): switchable 16KB bank at $8000, last bank fixed at $C000, usually CHR-RAM.
 //! https://www.nesdev.org/wiki/UxROM
 
-use super::{bank_index, Chr, Mapper};
+use super::{mapper_state, bank_index, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
 const BANK_SIZE: usize = 16 * 1024;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Uxrom {
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     chr: Chr,
     mirroring: Mirroring,
@@ -26,6 +28,8 @@ impl Uxrom {
 }
 
 impl Mapper for Uxrom {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         let len = self.prg_rom.len();
         match addr {

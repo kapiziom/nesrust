@@ -12,9 +12,9 @@ const PAL_RATES: [u16; 16] = [398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 
 /// Calibrated with Blargg's dmc_dma_during_read4 and sprdma_and_dmc_dma tests (together with the get/put cycle parity in the CPU).
 const DMA_REQUEST_DELAY: u8 = 3;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Dmc {
-    rates: &'static [u16; 16],
+    pal: bool,
     irq_enabled: bool,
     looping: bool,
     timer: Timer,
@@ -51,7 +51,7 @@ impl Dmc {
     pub fn new(region: Region) -> Self {
         let rates = if region == Region::Pal { &PAL_RATES } else { &NTSC_RATES };
         Dmc {
-            rates,
+            pal: region == Region::Pal,
             irq_enabled: false,
             looping: false,
             // the DMC timer runs on the APU clock (every other CPU cycle): its first firing falls on an even cycle
@@ -75,6 +75,10 @@ impl Dmc {
 }
 
 impl Dmc {
+    fn rates(&self) -> &'static [u16; 16] {
+        if self.pal { &PAL_RATES } else { &NTSC_RATES }
+    }
+
     /// `register` is 0-3 (the offset from $4010).
     pub fn write(&mut self, register: u16, data: u8) {
         match register {
@@ -84,7 +88,7 @@ impl Dmc {
                     self.irq_flag = false;
                 }
                 self.looping = data & 0x40 != 0;
-                self.timer.period = self.rates[data as usize & 0x0F] - 1;
+                self.timer.period = self.rates()[data as usize & 0x0F] - 1;
             }
             1 => self.output_level = data & 0x7F,
             2 => self.sample_address = data,

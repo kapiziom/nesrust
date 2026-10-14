@@ -2,7 +2,7 @@
 //! The four mapper numbers are the same chip wired with its two register-select lines connected to different CPU
 //! address lines. https://www.nesdev.org/wiki/VRC2_and_VRC4
 
-use super::{bank_index, Chr, Mapper, PrgRam};
+use super::{mapper_state, bank_index, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -11,8 +11,10 @@ const CHR_1K: usize = 1024;
 /// PPU dots per scanline: the IRQ prescaler counts CPU cycles x 3 against this.
 const PRESCALER_RELOAD: i16 = 341;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Vrc2_4 {
     mapper: u16,
+    #[serde(skip)]
     prg_rom: Vec<u8>,
     prg_ram: PrgRam,
     chr: Chr,
@@ -133,6 +135,8 @@ impl Vrc2_4 {
 }
 
 impl Mapper for Vrc2_4 {
+    mapper_state!();
+
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
             0x6000..=0x7FFF if self.ram_enabled || self.mapper == 22 || self.mapper == 23 => {

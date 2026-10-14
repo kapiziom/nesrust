@@ -8,10 +8,13 @@ use crate::emulator::controller::{Buttons, Controller};
 use crate::emulator::ram::RAM;
 use crate::emulator::region::Region;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Bus {
     ram: RAM,
     ppu: PPU,
     apu: Apu,
+    /// Not part of the state: ROM and mapper stay with the running console (see `Nes::load_state`).
+    #[serde(skip, default = "Cartridge::placeholder")]
     pub cartridge: Cartridge,
     pub nmi_interrupt: Option<u8>,
     cycles: usize,
@@ -32,6 +35,17 @@ pub struct Bus {
 }
 
 impl Bus {
+    /// After a save state was deserialized into `self`: takes over what is not part of the state from the console
+    /// that was running (cartridge with its ROM, palette, picture, audio output rate).
+    pub(crate) fn take_runtime_from(&mut self, running: &mut Bus) {
+        std::mem::swap(&mut self.cartridge, &mut running.cartridge);
+        self.ppu.take_output_from(&mut running.ppu);
+        // changing the rate restarts the resampler, so only do it when the host's rate differs from the saved one
+        if self.apu.sample_rate() != running.apu.sample_rate() {
+            self.apu.set_sample_rate(running.apu.sample_rate());
+        }
+    }
+
     pub fn new(cartridge: Cartridge) -> Self {
         let region = cartridge.region();
         Self {
@@ -52,6 +66,11 @@ impl Bus {
     }
 
     /// Sets the buttons held on controller `port` (0 or 1). Out-of-range ports are ignored.
+    /// The buttons currently held on controller `port`.
+    pub fn buttons(&self, port: usize) -> Buttons {
+        self.controllers.get(port).map(Controller::buttons).unwrap_or_default()
+    }
+
     pub fn set_buttons(&mut self, port: usize, buttons: Buttons) {
         if let Some(controller) = self.controllers.get_mut(port) {
             controller.set_buttons(buttons);

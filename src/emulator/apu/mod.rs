@@ -25,6 +25,7 @@ pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 /// If nobody drains the samples, only the most recent two seconds are kept.
 const MAX_BUFFERED_SAMPLES: usize = 2 * 96_000;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Apu {
     region: Region,
     pulse1: Pulse,
@@ -37,6 +38,7 @@ pub struct Apu {
     /// The IRQ output as the CPU sees it: it follows the flags with a one-cycle delay.
     irq_line: bool,
 
+    #[serde(skip)]
     mixer: Mixer,
     filter: OutputFilter,
     sample_rate: u32,
@@ -45,6 +47,7 @@ pub struct Apu {
     accumulator: f64,
     accumulated: u32,
     phase: f64,
+    #[serde(skip)]
     samples: Vec<f32>,
 }
 

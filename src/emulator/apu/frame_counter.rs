@@ -6,7 +6,7 @@
 use crate::emulator::region::Region;
 
 /// The cycle numbers of the sequence steps for one region.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 struct Steps {
     quarter_1: u32,
     half_1: u32,
@@ -41,7 +41,7 @@ const PAL: Steps = Steps {
     five_step_end: 41566,
 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FrameClock {
     /// Envelopes and the triangle's linear counter (~240 Hz).
     pub quarter: bool,
@@ -49,7 +49,7 @@ pub struct FrameClock {
     pub half: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FrameCounter {
     steps: Steps,
     position: u32,

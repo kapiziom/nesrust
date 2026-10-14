@@ -10,6 +10,7 @@ pub use operation_codes::*;
 use addressing::{AddressingMode, Access};
 use crate::emulator::cpu::flags::CpuFlags;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU<B: CpuBus> {
     pub (super) register_a: u8,
     pub (super) register_x: u8,

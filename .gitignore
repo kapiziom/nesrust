@@ -7,3 +7,5 @@ test_rom/blargg/
 *.sav
 /*.png
 .games
+*.state
+.games
