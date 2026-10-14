@@ -12,8 +12,8 @@ NV1B DIZC
 |+-------- Overflow
 +--------- Negative
 */
-use crate::emulator::bus::cpu_bus::CpuBus;
-use crate::emulator::cpu::CPU;
+use crate::cpu_bus::CpuBus;
+use crate::CPU;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -30,19 +30,19 @@ bitflags::bitflags! {
 }
 
 impl<B: CpuBus> CPU<B> {
-    pub(super) fn set_flag(&mut self, flag: CpuFlags, value: bool) {
+    pub(crate) fn set_flag(&mut self, flag: CpuFlags, value: bool) {
         self.flags.set(flag, value);
     }
 
-    pub(super) fn clear_flag(&mut self, flag: CpuFlags) {
+    pub(crate) fn clear_flag(&mut self, flag: CpuFlags) {
         self.flags.set(flag, false);
     }
 
-    pub(super) fn insert_flag(&mut self, flag: CpuFlags) {
+    pub(crate) fn insert_flag(&mut self, flag: CpuFlags) {
         self.flags.set(flag, true);
     }
 
-    pub(super) fn get_flag_value(&mut self, flag: CpuFlags) -> u16 {
+    pub(crate) fn get_flag_value(&mut self, flag: CpuFlags) -> u16 {
         if self.contains_flag(flag) {
             1
         } else {
@@ -50,11 +50,11 @@ impl<B: CpuBus> CPU<B> {
         }
     }
 
-    pub(super) fn contains_flag(&mut self, flag: CpuFlags) -> bool {
+    pub(crate) fn contains_flag(&mut self, flag: CpuFlags) -> bool {
         self.flags.contains(flag)
     }
 
-    pub(super) fn update_zero_and_negative_flags(&mut self, result: u8) {
+    pub(crate) fn update_zero_and_negative_flags(&mut self, result: u8) {
         self.set_flag(CpuFlags::ZERO, result == 0);
         self.set_flag(CpuFlags::NEGATIVE, result & 0x80 != 0);
     }

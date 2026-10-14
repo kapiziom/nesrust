@@ -1,4 +1,4 @@
-use crate::emulator::cpu::addressing::AddressingMode;
+use crate::addressing::AddressingMode;
 
 /*
 CPU instructions
@@ -91,7 +91,7 @@ pub enum Mnemonic {
 pub struct OperationCode {
     pub code: u8,
     pub mnemonic: Mnemonic,
-    pub(super) addressing_mode: AddressingMode,
+    pub(crate) addressing_mode: AddressingMode,
     pub bytes: u8,
     /// Base cycle count (without branch/page-cross penalties); the CPU derives real timing from bus accesses
     /// and the unit tests check it against this table.

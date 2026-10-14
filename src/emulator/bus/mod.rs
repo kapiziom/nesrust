@@ -1,5 +1,5 @@
 pub mod cpu_bus;
-pub mod mock_bus;
+pub use mos6502::mock_bus;
 
 use crate::emulator::apu::{self, Apu};
 use crate::emulator::cartridge::Cartridge;

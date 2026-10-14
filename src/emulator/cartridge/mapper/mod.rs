@@ -116,28 +116,7 @@ pub trait Mapper {
     fn load_state(&mut self, data: &[u8]) -> Result<(), StateError>;
 }
 
-/// A save state could not be restored.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StateError {
-    /// The bytes are not a state of this console (truncated or damaged).
-    Corrupt,
-    /// Saved by an incompatible version of the emulator.
-    WrongVersion,
-    /// Saved while running another cartridge.
-    WrongCartridge,
-}
-
-impl std::fmt::Display for StateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StateError::Corrupt => write!(f, "the save state is corrupt"),
-            StateError::WrongVersion => write!(f, "the save state was made by another version of the emulator"),
-            StateError::WrongCartridge => write!(f, "the save state belongs to another cartridge"),
-        }
-    }
-}
-
-impl std::error::Error for StateError {}
+pub use emu_core::StateError;
 
 /// Implements `save_state`/`load_state` for a mapper struct that derives serde and keeps its ROM in `#[serde(skip)]`
 /// fields: the CHR-ROM (inside `chr`) and `prg_rom` are taken over from the running mapper.

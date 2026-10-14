@@ -1,26 +1,26 @@
-use crate::emulator::bus::cpu_bus::CpuBus;
-use crate::emulator::cpu::flags::CpuFlags;
-use crate::emulator::cpu::CPU;
+use crate::cpu_bus::CpuBus;
+use crate::flags::CpuFlags;
+use crate::CPU;
 
-pub(super) struct Interrupt {
-    pub(super) vector_addr: u16,
-    pub(super) b_flag_mask: u8,
+pub(crate) struct Interrupt {
+    pub(crate) vector_addr: u16,
+    pub(crate) b_flag_mask: u8,
 }
 
 // https://www.nesdev.org/wiki/Status_flags#The_B_flag
 // The pushed status always has bit 5 set; bit 4 (B) is set only for BRK (and PHP), never for NMI/IRQ.
-pub(super) const BRK: Interrupt = Interrupt { vector_addr: 0xFFFE, b_flag_mask: 0b00110000 };
+pub(crate) const BRK: Interrupt = Interrupt { vector_addr: 0xFFFE, b_flag_mask: 0b00110000 };
 
-pub(super) const IRQ: Interrupt = Interrupt { vector_addr: 0xFFFE, b_flag_mask: 0b00100000 };
+pub(crate) const IRQ: Interrupt = Interrupt { vector_addr: 0xFFFE, b_flag_mask: 0b00100000 };
 
-pub(super) const NMI: Interrupt = Interrupt { vector_addr: 0xFFFA, b_flag_mask: 0b00100000 };
+pub(crate) const NMI: Interrupt = Interrupt { vector_addr: 0xFFFA, b_flag_mask: 0b00100000 };
 
 const RESET_VECTOR: u16 = 0xFFFC;
 
 impl<B: CpuBus> CPU<B> {
     /// The last five cycles shared by BRK, IRQ and NMI: push PC and status, mask IRQs, load the vector.
     /// `program_counter` must already hold the address to return to.
-    pub(super) fn enter_interrupt(&mut self, interrupt: Interrupt) {
+    pub(crate) fn enter_interrupt(&mut self, interrupt: Interrupt) {
         self.push_stack_u16(self.program_counter);
 
         // B is not a real register bit: it only exists in the pushed copy
@@ -50,7 +50,7 @@ impl<B: CpuBus> CPU<B> {
 
     /// Services an NMI (edge, has priority) or IRQ (level, masked by the I flag) as seen at the end of the previous
     /// instruction's second-to-last cycle, before the next opcode is fetched. Returns true if an interrupt was taken.
-    pub(super) fn poll_interrupts(&mut self) -> bool {
+    pub(crate) fn poll_interrupts(&mut self) -> bool {
         let interrupt = if self.nmi_ready {
             self.nmi_ready = false;
             self.nmi_latched = false;

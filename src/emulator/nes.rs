@@ -3,6 +3,7 @@ use crate::emulator::cartridge::{Cartridge, StateError};
 use crate::emulator::controller::Buttons;
 use crate::emulator::cpu::{CpuState, CPU};
 use crate::emulator::region::Region;
+use emu_core::{ButtonInfo, Machine, VideoFrame};
 
 const STATE_MAGIC: [u8; 4] = *b"NSST";
 /// Bump when the layout of any serialized struct changes.
@@ -132,5 +133,70 @@ impl Nes {
 
     pub fn bus_mut(&mut self) -> &mut Bus {
         &mut self.cpu.bus
+    }
+}
+
+const BUTTONS: [ButtonInfo; 8] = [
+    ButtonInfo { name: "A", bit: 0 },
+    ButtonInfo { name: "B", bit: 1 },
+    ButtonInfo { name: "Select", bit: 2 },
+    ButtonInfo { name: "Start", bit: 3 },
+    ButtonInfo { name: "Up", bit: 4 },
+    ButtonInfo { name: "Down", bit: 5 },
+    ButtonInfo { name: "Left", bit: 6 },
+    ButtonInfo { name: "Right", bit: 7 },
+];
+
+impl Machine for Nes {
+    fn reset(&mut self) {
+        Nes::reset(self);
+    }
+
+    fn run_frame(&mut self) -> bool {
+        Nes::run_frame(self)
+    }
+
+    fn video(&self) -> VideoFrame<'_> {
+        VideoFrame {
+            width: crate::emulator::ppu::SCREEN_WIDTH,
+            height: crate::emulator::ppu::SCREEN_HEIGHT,
+            rgba: self.framebuffer(),
+        }
+    }
+
+    fn frame_rate(&self) -> f64 {
+        self.region().frame_rate()
+    }
+
+    fn set_audio_sample_rate(&mut self, hz: u32) {
+        self.set_sample_rate(hz);
+    }
+
+    fn drain_audio(&mut self, out: &mut Vec<f32>) {
+        Nes::drain_audio(self, out);
+    }
+
+    fn buttons(&self) -> &'static [ButtonInfo] {
+        &BUTTONS
+    }
+
+    fn set_input(&mut self, port: usize, pressed: u32) {
+        self.set_buttons(port, Buttons::from_bits_truncate(pressed as u8));
+    }
+
+    fn save_state(&self) -> Vec<u8> {
+        Nes::save_state(self)
+    }
+
+    fn load_state(&mut self, data: &[u8]) -> Result<(), StateError> {
+        Nes::load_state(self, data)
+    }
+
+    fn battery_ram(&self) -> Option<&[u8]> {
+        self.cpu.bus.cartridge.battery_ram()
+    }
+
+    fn load_battery_ram(&mut self, data: &[u8]) {
+        self.cpu.bus.cartridge.load_battery_ram(data);
     }
 }

@@ -1,3 +1,10 @@
+//! A cycle-accurate NMOS 6502 as found in the NES's 2A03 (no decimal mode), generic over the bus it is wired to.
+//! Every bus access is one CPU cycle; the bus decides what lives at each address and what else advances in
+//! parallel (see `CpuBus`). The same core can drive other 6502-based machines.
+
+pub mod cpu_bus;
+pub mod mock_bus;
+
 mod addressing;
 mod flags;
 mod instructions;
@@ -5,8 +12,8 @@ mod interrupts;
 mod operation_codes;
 mod stack;
 
-use crate::emulator::bus::cpu_bus::CpuBus;
-use crate::emulator::cpu::flags::CpuFlags;
+use crate::cpu_bus::CpuBus;
+use crate::flags::CpuFlags;
 use addressing::{Access, AddressingMode};
 pub use operation_codes::*;
 
@@ -20,12 +27,12 @@ const LXA_MAGIC: u8 = 0xFF;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU<B: CpuBus> {
-    pub(super) register_a: u8,
-    pub(super) register_x: u8,
-    pub(super) register_y: u8,
-    pub(super) stack_pointer: u8,
+    pub(crate) register_a: u8,
+    pub(crate) register_x: u8,
+    pub(crate) register_y: u8,
+    pub(crate) stack_pointer: u8,
     pub program_counter: u16,
-    pub(super) flags: flags::CpuFlags,
+    pub(crate) flags: flags::CpuFlags,
     pub bus: B,
     /// Total CPU cycles executed since creation (for tracing/test comparison).
     pub cycles: u64,
@@ -521,14 +528,14 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// One CPU cycle in which the bus is not used (the bus and everything behind it still advances).
-    pub(super) fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         self.cycles += 1;
         self.bus.tick(1);
         self.end_cycle();
     }
 
     /// Bus read; costs one CPU cycle. If the DMC is waiting for a sample byte the CPU is halted first.
-    pub(super) fn read(&mut self, address: u16) -> u8 {
+    pub(crate) fn read(&mut self, address: u16) -> u8 {
         if let Some(sample_address) = self.bus.take_dmc_dma() {
             self.run_dmc_dma(address, sample_address);
         }
@@ -546,7 +553,7 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// Bus write; costs one CPU cycle.
-    pub(super) fn write(&mut self, address: u16, data: u8) {
+    pub(crate) fn write(&mut self, address: u16, data: u8) {
         self.cycles += 1;
         self.bus.tick_before_access(true);
         self.bus.write(address, data);
@@ -579,11 +586,11 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// The NMI and IRQ requests as seen at the end of the previous cycle (what the next poll would act on).
-    pub(super) fn interrupt_lines_seen(&self) -> (bool, bool) {
+    pub(crate) fn interrupt_lines_seen(&self) -> (bool, bool) {
         (self.nmi_ready, self.irq_ready)
     }
 
-    pub(super) fn restore_interrupt_lines_seen(&mut self, seen: (bool, bool)) {
+    pub(crate) fn restore_interrupt_lines_seen(&mut self, seen: (bool, bool)) {
         (self.nmi_ready, self.irq_ready) = seen;
     }
 
@@ -612,7 +619,7 @@ impl<B: CpuBus> CPU<B> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::emulator::bus::mock_bus::MockBus;
+    use crate::mock_bus::MockBus;
 
     fn prepare_test_cpu(program: &[u8]) -> CPU<MockBus> {
         let mut bus = MockBus::new();

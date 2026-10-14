@@ -39,8 +39,9 @@
 
 ## 📂 Project Structure
 
-- **`src/emulator/cpu/`**: MOS 6502 core (`operation_codes.rs` opcode table, `addressing.rs`, `instructions.rs`, `interrupts.rs`).
-- **`src/emulator/bus/`**: `CpuBus` trait, the real `Bus`, and `MockBus` for tests.
+- **`crates/mos6502/`**: the MOS 6502 core as its own crate (opcode table, addressing, interrupts, the `CpuBus` trait, `MockBus`).
+- **`crates/emu-core/`**: the `Machine` trait a frontend drives any console through, plus `Rewind`.
+- **`src/emulator/bus/`**: the NES `Bus` (implements `CpuBus`).
 - **`src/emulator/cartridge/`**: iNES parser and the `Mapper` trait with its implementations.
 - **`src/emulator/ppu/`, `apu/`, `ram/`, `nes.rs`**: PPU, APU (empty), 2KB RAM, the `Nes` console facade.
 - **`tests/`**: integration tests (nestest, Blargg ROMs, whole-console programs, cartridge loading); reference ROMs live in `test_rom/`.

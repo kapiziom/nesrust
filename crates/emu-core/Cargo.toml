@@ -1,0 +1,7 @@
+[package]
+name = "emu-core"
+version = "0.1.0"
+edition = "2021"
+description = "What a frontend needs from an emulated console: the Machine trait, save state errors and rewinding"
+
+[dependencies]

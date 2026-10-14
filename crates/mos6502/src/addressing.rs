@@ -1,9 +1,9 @@
-use crate::emulator::bus::cpu_bus::CpuBus;
-use crate::emulator::cpu::CPU;
+use crate::cpu_bus::CpuBus;
+use crate::CPU;
 
 // https://www.nesdev.org/obelisk-6502-guide/addressing.html#IMM
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum AddressingMode {
+pub(crate) enum AddressingMode {
     Implicit,
     Accumulator,
     Immediate,
@@ -22,7 +22,7 @@ pub(super) enum AddressingMode {
 /// What the instruction does with the effective address. Indexed modes behave differently:
 /// reads only pay for a page crossing, writes and read-modify-writes always do the extra (dummy) read.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum Access {
+pub(crate) enum Access {
     Read,
     Write,
     ReadModifyWrite,
@@ -32,20 +32,20 @@ pub(super) enum Access {
 // https://www.nesdev.org/6502_cpu.txt
 impl<B: CpuBus> CPU<B> {
     /// Reads the byte at PC and advances PC.
-    pub(super) fn fetch(&mut self) -> u8 {
+    pub(crate) fn fetch(&mut self) -> u8 {
         let value = self.read(self.program_counter);
         self.program_counter = self.program_counter.wrapping_add(1);
         value
     }
 
-    pub(super) fn fetch_u16(&mut self) -> u16 {
+    pub(crate) fn fetch_u16(&mut self) -> u16 {
         let low = self.fetch() as u16;
         let high = self.fetch() as u16;
         (high << 8) | low
     }
 
     /// Resolves the operand address of `mode`, consuming the operand bytes and the cycles of the addressing mode.
-    pub(super) fn effective_address(&mut self, mode: AddressingMode, access: Access) -> u16 {
+    pub(crate) fn effective_address(&mut self, mode: AddressingMode, access: Access) -> u16 {
         match mode {
             // the operand itself is the byte after the opcode
             AddressingMode::Immediate => {
@@ -119,18 +119,18 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// Reads the operand of a read-type instruction.
-    pub(super) fn read_operand(&mut self, mode: AddressingMode) -> u8 {
+    pub(crate) fn read_operand(&mut self, mode: AddressingMode) -> u8 {
         let address = self.effective_address(mode, Access::Read);
         self.read(address)
     }
 
-    pub(super) fn store(&mut self, mode: AddressingMode, value: u8) {
+    pub(crate) fn store(&mut self, mode: AddressingMode, value: u8) {
         let address = self.effective_address(mode, Access::Write);
         self.write(address, value);
     }
 
     /// Read-modify-write: the CPU writes the unmodified value back before writing the result.
-    pub(super) fn modify(&mut self, mode: AddressingMode, operation: impl FnOnce(&mut Self, u8) -> u8) {
+    pub(crate) fn modify(&mut self, mode: AddressingMode, operation: impl FnOnce(&mut Self, u8) -> u8) {
         if mode == AddressingMode::Accumulator {
             self.read(self.program_counter); // dummy read
             let result = operation(self, self.register_a);
@@ -147,7 +147,7 @@ impl<B: CpuBus> CPU<B> {
 
     /// SHA/SHX/SHY/TAS: stores `value & (high byte of the base address + 1)`. When the index crosses a page the
     /// value also replaces the high byte of the target address. https://www.nesdev.org/wiki/CPU_unofficial_opcodes
-    pub(super) fn store_masked_by_high_byte(&mut self, mode: AddressingMode, value: u8) {
+    pub(crate) fn store_masked_by_high_byte(&mut self, mode: AddressingMode, value: u8) {
         let (base, index) = match mode {
             AddressingMode::AbsoluteX => (self.fetch_u16(), self.register_x),
             AddressingMode::AbsoluteY => (self.fetch_u16(), self.register_y),
@@ -166,7 +166,7 @@ impl<B: CpuBus> CPU<B> {
     }
 
     /// The extra cycle of implied/accumulator instructions: a dummy read of the next byte.
-    pub(super) fn implied(&mut self) {
+    pub(crate) fn implied(&mut self) {
         self.read(self.program_counter);
     }
 }

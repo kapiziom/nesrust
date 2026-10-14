@@ -1,4 +1,4 @@
-use crate::emulator::bus::cpu_bus::CpuBus;
+use crate::cpu_bus::CpuBus;
 
 pub struct MockBus {
     pub memory: [u8; 0x10000],

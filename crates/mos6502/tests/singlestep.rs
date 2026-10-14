@@ -8,11 +8,11 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use nesrs::emulator::bus::cpu_bus::CpuBus;
-use nesrs::emulator::cpu::{CpuState, CPU};
+use mos6502::cpu_bus::CpuBus;
+use mos6502::{CpuState, CPU};
 use serde::Deserialize;
 
-const TEST_DIR: &str = "test_rom/singlestep";
+const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test_rom/singlestep");
 
 /// Opcodes whose reference results are not matched. Everything else must pass.
 /// $AB (LXA) is analog-dependent: the reference ORs $EE into A, Blargg's instr_test (real NES) expects $FF.
