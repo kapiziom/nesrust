@@ -86,6 +86,16 @@ impl Cartridge {
         self.mapper.ppu_write(addr, data);
     }
 
+    /// Nametable memory provided by the board itself, if any (see `Mapper::nametable_read`).
+    pub fn nametable_read(&mut self, addr: u16) -> Option<u8> {
+        self.mapper.nametable_read(addr)
+    }
+
+    /// Returns true when the board handled the write instead of the console's VRAM.
+    pub fn nametable_write(&mut self, addr: u16, data: u8) -> bool {
+        self.mapper.nametable_write(addr, data)
+    }
+
     /// The PPU drove `addr` onto its address bus outside of a pattern table access.
     pub fn ppu_address_changed(&mut self, addr: u16) {
         self.mapper.ppu_address_changed(addr);
@@ -149,9 +159,9 @@ mod tests {
     #[test]
     fn supported_mappers_load() {
         for mapper in [
-            0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73,
-            75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207,
-            210,
+            0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72,
+            73, 75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206,
+            207, 210,
         ] {
             assert!(Cartridge::from_bytes(&nes_file(mapper)).is_ok(), "mapper {mapper}");
         }

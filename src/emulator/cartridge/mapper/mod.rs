@@ -14,6 +14,7 @@ mod jaleco_ss88006;
 mod mmc1;
 mod mmc2;
 mod mmc3;
+mod namco163;
 mod namco175_340;
 mod nrom;
 mod sunsoft3;
@@ -58,6 +59,17 @@ pub trait Mapper {
 
     /// Called once per CPU cycle (MMC1 ignores back-to-back writes, MMC3 filters A12 glitches).
     fn cpu_cycle(&mut self) {}
+
+    /// A board that supplies nametable memory itself (CHR-ROM nametables, its own RAM, fill mode) answers a read in
+    /// $2000-$2FFF here. `None` means the console's VRAM is used, arranged by `mirroring()`.
+    fn nametable_read(&mut self, _addr: u16) -> Option<u8> {
+        None
+    }
+
+    /// Counterpart of `nametable_read`: returns true when the board took the write.
+    fn nametable_write(&mut self, _addr: u16, _data: u8) -> bool {
+        false
+    }
 
     /// Level of the mapper's own sound hardware, to be added to the APU mixer output (roughly 0.0 to 0.5, where
     /// the two APU pulse channels at full volume give 0.26). Clocked from `cpu_cycle`.
@@ -143,6 +155,7 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         33 | 48 | 80 | 207 => Box::new(taito::Taito::new(file)),
         18 => Box::new(jaleco_ss88006::JalecoSs88006::new(file)),
         67 => Box::new(sunsoft3::Sunsoft3::new(file)),
+        19 => Box::new(namco163::Namco163::new(file)),
         210 => Box::new(namco175_340::Namco175340::new(file)),
         16 | 159 => Box::new(bandai_fcg::BandaiFcg::new(file)),
         34 => Box::new(bnrom::Bnrom::new(file)),
@@ -283,8 +296,8 @@ mod tests {
 
     /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
     const ALL_MAPPERS: &[u16] = &[
-        0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73, 75,
-        76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207, 210,
+        0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73,
+        75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207, 210,
     ];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.

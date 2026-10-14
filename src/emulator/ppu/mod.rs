@@ -419,7 +419,10 @@ impl PPU {
     fn bus_read(&mut self, cartridge: &mut Cartridge, address: u16) -> u8 {
         match address & 0x3FFF {
             address @ 0x0000..=0x1FFF => cartridge.ppu_read(address),
-            address @ 0x2000..=0x3EFF => self.vram[nametable_offset(address, cartridge.mirroring())],
+            address @ 0x2000..=0x3EFF => match cartridge.nametable_read(address & 0x2FFF) {
+                Some(value) => value,
+                None => self.vram[nametable_offset(address, cartridge.mirroring())],
+            },
             address => self.palette_ram[palette_index(address)],
         }
     }
@@ -428,7 +431,9 @@ impl PPU {
         match address & 0x3FFF {
             address @ 0x0000..=0x1FFF => cartridge.ppu_write(address, data),
             address @ 0x2000..=0x3EFF => {
-                self.vram[nametable_offset(address, cartridge.mirroring())] = data;
+                if !cartridge.nametable_write(address & 0x2FFF, data) {
+                    self.vram[nametable_offset(address, cartridge.mirroring())] = data;
+                }
             }
             address => self.palette_ram[palette_index(address)] = data & 0x3F,
         }

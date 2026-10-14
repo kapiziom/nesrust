@@ -894,3 +894,33 @@ fn custom_mirroring_maps_each_nametable_to_its_own_page() {
     assert_eq!(nametable_offset(0x2C05, mirroring), 0x400 + 5);
     assert_eq!(nametable_offset(0x3C05, mirroring), 0x400 + 5, "$3000-$3EFF mirror $2000-$2EFF");
 }
+
+#[test]
+fn a_board_with_its_own_nametable_memory_overrides_the_console_vram() {
+    // Namco 163: nametable 0 reads CHR-ROM bank 2 (every byte of it is $77), nametable 1 uses the board's RAM
+    let mut data = vec![0u8; 16 + 16384 + 8192];
+    data[0..4].copy_from_slice(b"NES\x1A");
+    data[4] = 1;
+    data[5] = 1;
+    data[6] = 19 << 4;
+    data[7] = 19 & 0xF0;
+    data[16 + 16384 + 2048..16 + 16384 + 3072].fill(0x77);
+    let mut cart = Cartridge::from_bytes(&data).unwrap();
+    let mut ppu = PPU::new();
+    cart.cpu_write(0xC000, 2);
+    cart.cpu_write(0xC800, 0xE0);
+
+    write_vram(&mut ppu, &mut cart, 0x2005, &[0xAA]); // swallowed by the ROM nametable
+    write_vram(&mut ppu, &mut cart, 0x2405, &[0xBB]);
+
+    set_address(&mut ppu, &mut cart, 0x2005);
+    read(&mut ppu, &mut cart, 7);
+    wait_dots(&mut ppu, &mut cart, 12);
+    assert_eq!(read(&mut ppu, &mut cart, 7), 0x77, "nametable 0 comes from CHR-ROM");
+    set_address(&mut ppu, &mut cart, 0x2405);
+    wait_dots(&mut ppu, &mut cart, 12);
+    read(&mut ppu, &mut cart, 7);
+    wait_dots(&mut ppu, &mut cart, 12);
+    assert_eq!(read(&mut ppu, &mut cart, 7), 0xBB, "nametable 1 comes from the board's RAM");
+    assert_eq!(ppu.vram[5], 0, "the console's VRAM was not touched");
+}
