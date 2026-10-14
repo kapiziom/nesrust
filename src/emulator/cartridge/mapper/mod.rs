@@ -26,6 +26,8 @@ mod vrc1;
 mod vrc2_4;
 mod vrc3;
 mod vrc6;
+mod vrc7;
+mod vrc7_fm;
 mod vrc_irq;
 
 use super::ines::{CartridgeError, INesFile};
@@ -154,6 +156,7 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         21 | 22 | 23 | 25 => Box::new(vrc2_4::Vrc2_4::new(file)),
         24 | 26 => Box::new(vrc6::Vrc6::new(file)),
         75 => Box::new(vrc1::Vrc1::new(file)),
+        85 => Box::new(vrc7::Vrc7::new(file)),
         73 => Box::new(vrc3::Vrc3::new(file)),
         32 | 65 => Box::new(irem::Irem::new(file)),
         33 | 48 | 80 | 207 => Box::new(taito::Taito::new(file)),
@@ -301,7 +304,8 @@ mod tests {
     /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
     const ALL_MAPPERS: &[u16] = &[
         0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73,
-        75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207, 210,
+        75, 76, 78, 79, 80, 85, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207,
+        210,
     ];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.
