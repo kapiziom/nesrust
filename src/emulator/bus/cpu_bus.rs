@@ -96,6 +96,7 @@ impl CpuBus for Bus {
             // PPU registers + mirroring
             0x2000..=0x3FFF => {
                 self.ppu.write_register(addr & 0x7, data, &mut self.cartridge);
+                self.cartridge.ppu_register_write(addr & 0x7, data);
             }
             // OAM DMA
             0x4014 => {

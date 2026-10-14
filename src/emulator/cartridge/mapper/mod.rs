@@ -14,6 +14,7 @@ mod jaleco_ss88006;
 mod mmc1;
 mod mmc2;
 mod mmc3;
+mod mmc5;
 mod namco163;
 mod namco175_340;
 mod nrom;
@@ -31,6 +32,16 @@ use super::ines::{CartridgeError, INesFile};
 use super::mirroring::Mirroring;
 #[cfg(test)]
 use crate::emulator::region::Region;
+
+/// What kind of pattern fetches the PPU is doing right now (the MMC5 uses different CHR banks for each).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PpuPhase {
+    /// No rendering fetches: the CPU may be reading or writing pattern memory through $2007.
+    #[default]
+    Idle,
+    Background,
+    Sprites,
+}
 
 pub trait Mapper {
     /// CPU read in $4020-$FFFF. `None` means nothing drives the bus (open bus).
@@ -59,6 +70,19 @@ pub trait Mapper {
 
     /// Called once per CPU cycle (MMC1 ignores back-to-back writes, MMC3 filters A12 glitches).
     fn cpu_cycle(&mut self) {}
+
+    /// The PPU moves between background fetches, sprite fetches and idling (only while rendering).
+    fn ppu_phase(&mut self, _phase: PpuPhase) {}
+
+    /// The PPU finished the tile fetches of scanline `scanline` (a visible line or the pre-render line) and starts
+    /// the dummy nametable fetches: the moment the MMC5 counts a scanline.
+    fn ppu_scanline_end(&mut self, _scanline: u16) {}
+
+    /// The vertical blanking period starts.
+    fn ppu_vblank(&mut self) {}
+
+    /// The CPU wrote `data` to PPU register `register` (0-7): the MMC5 snoops $2000 and $2001.
+    fn ppu_register_write(&mut self, _register: u16, _data: u8) {}
 
     /// A board that supplies nametable memory itself (CHR-ROM nametables, its own RAM, fill mode) answers a read in
     /// $2000-$2FFF here. `None` means the console's VRAM is used, arranged by `mirroring()`.
@@ -142,6 +166,7 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         2 => Box::new(uxrom::Uxrom::new(file)),
         3 => Box::new(cnrom::Cnrom::new(file)),
         4 | 76 | 88 | 95 | 118 | 119 | 154 | 206 => Box::new(mmc3::Mmc3::new(file)),
+        5 => Box::new(mmc5::Mmc5::new(file)),
         7 => Box::new(axrom::Axrom::new(file)),
         9 | 10 => Box::new(mmc2::Mmc2::new(file)),
         11 | 66 | 72 | 78 | 79 | 87 | 89 | 92 | 93 | 94 | 97 | 140 | 152 | 180 | 184 | 185 => {
@@ -291,12 +316,12 @@ mod tests {
 
     #[test]
     fn unsupported_mapper_is_an_error() {
-        assert!(matches!(create(file(5, 2, 1)), Err(CartridgeError::UnsupportedMapper(5))));
+        assert!(matches!(create(file(6, 2, 1)), Err(CartridgeError::UnsupportedMapper(6))));
     }
 
     /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
     const ALL_MAPPERS: &[u16] = &[
-        0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73,
+        0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73,
         75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207, 210,
     ];
 

@@ -11,7 +11,7 @@ use mapper::Mapper;
 
 use crate::emulator::region::Region;
 
-pub use mapper::StateError;
+pub use mapper::{PpuPhase, StateError};
 
 pub struct Cartridge {
     mapper: Box<dyn Mapper>,
@@ -84,6 +84,22 @@ impl Cartridge {
 
     pub fn ppu_write(&mut self, addr: u16, data: u8) {
         self.mapper.ppu_write(addr, data);
+    }
+
+    pub fn ppu_phase(&mut self, phase: PpuPhase) {
+        self.mapper.ppu_phase(phase);
+    }
+
+    pub fn ppu_scanline_end(&mut self, scanline: u16) {
+        self.mapper.ppu_scanline_end(scanline);
+    }
+
+    pub fn ppu_vblank(&mut self) {
+        self.mapper.ppu_vblank();
+    }
+
+    pub fn ppu_register_write(&mut self, register: u16, data: u8) {
+        self.mapper.ppu_register_write(register, data);
     }
 
     /// Nametable memory provided by the board itself, if any (see `Mapper::nametable_read`).
@@ -159,7 +175,7 @@ mod tests {
     #[test]
     fn supported_mappers_load() {
         for mapper in [
-            0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72,
+            0, 1, 2, 3, 4, 5, 7, 9, 10, 11, 16, 18, 19, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72,
             73, 75, 76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206,
             207, 210,
         ] {
@@ -169,9 +185,9 @@ mod tests {
 
     #[test]
     fn unsupported_mapper_is_reported() {
-        let error = Cartridge::from_bytes(&nes_file(5)).err().unwrap();
+        let error = Cartridge::from_bytes(&nes_file(6)).err().unwrap();
 
-        assert_eq!(error, CartridgeError::UnsupportedMapper(5));
+        assert_eq!(error, CartridgeError::UnsupportedMapper(6));
     }
 
     #[test]

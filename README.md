@@ -11,7 +11,7 @@
 
 ### Cartridge
 - **iNES and NES 2.0** parsing (malformed files return errors, never panic).
-- Mappers: **0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 9/10 (MMC2/MMC4), 16/159 (Bandai FCG, no EEPROM), 18 (Jaleco SS 88006), 19 (Namco 163 with audio), 21/22/23/25 (VRC2/VRC4), 24/26 (VRC6 with expansion audio), 32 and 65 (Irem), 33/48/80/207 (Taito), 34 (BNROM/NINA-001), 67 (Sunsoft 3), 69 (FME-7 with Sunsoft 5B audio), 71 (Camerica), 73 (VRC3), 75 (VRC1), 76/88/95/154/206 (Namco 108 family), 118/119 (TxSROM/TQROM), 210 (Namco 175/340), and the simple discrete boards 11, 66, 72, 78, 79, 87, 89, 92, 93, 94, 97, 140, 152, 180, 184, 185**.
+- Mappers: **0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 5 (MMC5 with audio, no split screen), 7 (AxROM), 9/10 (MMC2/MMC4), 16/159 (Bandai FCG, no EEPROM), 18 (Jaleco SS 88006), 19 (Namco 163 with audio), 21/22/23/25 (VRC2/VRC4), 24/26 (VRC6 with expansion audio), 32 and 65 (Irem), 33/48/80/207 (Taito), 34 (BNROM/NINA-001), 67 (Sunsoft 3), 69 (FME-7 with Sunsoft 5B audio), 71 (Camerica), 73 (VRC3), 75 (VRC1), 76/88/95/154/206 (Namco 108 family), 118/119 (TxSROM/TQROM), 210 (Namco 175/340), and the simple discrete boards 11, 66, 72, 78, 79, 87, 89, 92, 93, 94, 97, 140, 152, 180, 184, 185**.
 - PRG-RAM, CHR-RAM, battery-backed RAM access for saves, mapper-controlled mirroring and IRQ.
 
 ### Bus

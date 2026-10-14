@@ -368,3 +368,42 @@ fn dendy_vblank_and_nmi_come_50_lines_later_than_on_ntsc() {
     let expected = 50.0 * 341.0 / 3.0;
     assert!(((dendy - ntsc) as f64 - expected).abs() < 12.0, "NTSC {ntsc}, Dendy {dendy}");
 }
+
+#[test]
+fn the_mmc5_scanline_irq_fires_once_per_frame_at_the_requested_line() {
+    // MMC5 maps the last 8KB bank at $E000 on power-up (and, with 16KB of PRG, at $8000-$DFFF too)
+    #[rustfmt::skip]
+    let program = [
+        0x78,                         // SEI
+        0xA9, 0x40, 0x8D, 0x17, 0x40, // LDA #$40 : STA $4017 (no frame counter IRQ)
+        0xA9, 0x0A, 0x8D, 0x03, 0x52, // LDA #10 : STA $5203 (IRQ at scanline 10)
+        0xA9, 0x80, 0x8D, 0x04, 0x52, // LDA #$80 : STA $5204 (enable)
+        0xA9, 0x08, 0x8D, 0x01, 0x20, // LDA #$08 : STA $2001 (background on)
+        0x58,                         // CLI
+        0x4C, 0x16, 0xE0,             // spin
+        // IRQ handler at $E019: count it, acknowledge
+        0xE6, 0x00, 0xAD, 0x04, 0x52, 0x40,
+    ];
+    let mut data = vec![0u8; 16 + 16384 + 8192];
+    data[0..4].copy_from_slice(b"NES\x1A");
+    data[4] = 1;
+    data[5] = 1;
+    data[6] = 5 << 4;
+    data[16 + 0x2000..16 + 0x2000 + program.len()].copy_from_slice(&program);
+    let vectors = 16 + 0x3FFA;
+    data[vectors..vectors + 2].copy_from_slice(&0xE000u16.to_le_bytes());
+    data[vectors + 2..vectors + 4].copy_from_slice(&0xE000u16.to_le_bytes());
+    data[vectors + 4..vectors + 6].copy_from_slice(&0xE019u16.to_le_bytes());
+    let mut nes = Nes::new(Cartridge::from_bytes(&data).unwrap());
+
+    for _ in 0..3 {
+        nes.run_frame();
+    }
+    let after_three = nes.cpu.peek(0);
+    for _ in 0..4 {
+        nes.run_frame();
+    }
+
+    assert!((2..=3).contains(&after_three), "{after_three} IRQs in the first three frames");
+    assert_eq!(nes.cpu.peek(0) - after_three, 4, "exactly one per frame afterwards");
+}

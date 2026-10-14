@@ -8,9 +8,9 @@ mod dmc;
 mod frame_counter;
 mod mixer;
 mod noise;
-mod pulse;
+pub(crate) mod pulse;
 mod triangle;
-mod units;
+pub(crate) mod units;
 
 use crate::emulator::region::Region;
 use dmc::Dmc;

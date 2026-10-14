@@ -4,7 +4,7 @@
 pub mod palette;
 mod sprites;
 
-use crate::emulator::cartridge::{Cartridge, Mirroring};
+use crate::emulator::cartridge::{Cartridge, Mirroring, PpuPhase};
 use crate::emulator::region::Region;
 use palette::Palette;
 use sprites::Sprite;
@@ -491,6 +491,7 @@ impl PPU {
                 self.update_nmi();
             }
             self.frame_complete = true;
+            cartridge.ppu_vblank();
         }
 
         if pre_render && self.dot == 1 {
@@ -499,6 +500,15 @@ impl PPU {
         }
 
         if (visible || pre_render) && self.rendering_enabled() {
+            match self.dot {
+                1 | 321 => cartridge.ppu_phase(PpuPhase::Background),
+                257 => cartridge.ppu_phase(PpuPhase::Sprites),
+                337 => {
+                    cartridge.ppu_phase(PpuPhase::Idle);
+                    cartridge.ppu_scanline_end(self.scanline);
+                }
+                _ => {}
+            }
             self.fetch_dot(cartridge, visible, pre_render);
         }
 
