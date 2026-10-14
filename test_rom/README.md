@@ -11,3 +11,8 @@ Freely redistributable test ROMs used by the emulator tests. Do not add commerci
 Blargg's test ROMs (CPU, PPU, MMC3 and others) from https://github.com/christopherpow/nes-test-roms. They are
 git-ignored; see the "Test ROMs" section of the top-level README.md for how to download them. Run them with
 `cargo test --test blargg -- --nocapture`; `tests/blargg.rs` lists which ones must pass.
+
+## SingleStepTests (CPU)
+
+`singlestep/` is filled by `download_singlestep.ps1` (the first few hundred cases of every opcode from
+<https://github.com/SingleStepTests/65x02>, `nes6502` set, MIT). It is git-ignored; `tests/singlestep.rs` uses it.

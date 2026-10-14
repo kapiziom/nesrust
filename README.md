@@ -82,3 +82,15 @@ done
 
 Then `cargo test --test blargg -- --nocapture` lists every ROM with PASS/FAIL (`BLARGG_FILTER=ppu_vbl_nmi` runs a subset).
 The ROMs that currently pass are listed in `MUST_PASS` in `tests/blargg.rs`.
+
+### CPU single-step tests
+
+`tests/singlestep.rs` runs [SingleStepTests/65x02](https://github.com/SingleStepTests/65x02) (the `nes6502` set): every opcode on
+random initial states, comparing registers, memory and each bus access. Fetch the first few hundred cases of every opcode once
+(about 100 MB, git-ignored; Windows PowerShell, it uses `curl.exe`):
+
+```
+powershell -File test_rom/download_singlestep.ps1
+```
+
+Then `cargo test --test singlestep` (`SINGLESTEP_FILTER=a9 ... -- --nocapture` shows details of one opcode).

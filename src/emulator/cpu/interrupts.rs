@@ -71,6 +71,7 @@ impl<B: CpuBus> CPU<B> {
 
     /// Soft reset: registers keep their values, SP drops by 3 (nothing is written), PC comes from $FFFC. 7 cycles.
     pub fn reset(&mut self) {
+        self.jammed = false;
         self.read(self.program_counter);
         self.read(self.program_counter);
 

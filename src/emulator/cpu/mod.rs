@@ -10,6 +10,14 @@ use crate::emulator::cpu::flags::CpuFlags;
 use addressing::{Access, AddressingMode};
 pub use operation_codes::*;
 
+/// Opcodes that freeze the processor (KIL/HLT/JAM).
+const JAM_OPCODES: [u8; 12] = [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xB2, 0xD2, 0xF2];
+/// The "magic" constants ORed into A by the unstable XAA ($8B) and LXA ($AB). They depend on analog effects and
+/// differ between chips; LXA uses $FF like Blargg's instr_test-v5 (written against a real NES) expects, XAA the $EE
+/// of the SingleStepTests reference (which would also give LXA $EE).
+const XAA_MAGIC: u8 = 0xEE;
+const LXA_MAGIC: u8 = 0xFF;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CPU<B: CpuBus> {
     pub(super) register_a: u8,
@@ -30,6 +38,8 @@ pub struct CPU<B: CpuBus> {
     /// IRQ line was low and the I flag clear at the last sample.
     irq_sampled: bool,
     irq_ready: bool,
+    /// A JAM/KIL opcode froze the processor: only a reset gets it going again.
+    jammed: bool,
 }
 
 /// Snapshot of the programmer-visible CPU registers.
@@ -60,6 +70,7 @@ impl<B: CpuBus> CPU<B> {
             nmi_ready: false,
             irq_sampled: false,
             irq_ready: false,
+            jammed: false,
         }
     }
 
@@ -86,6 +97,12 @@ impl<B: CpuBus> CPU<B> {
     /// Services a pending interrupt or executes a single instruction.
     /// Returns false when execution cannot continue (unknown opcode).
     pub fn step(&mut self) -> bool {
+        if self.jammed {
+            // the frozen processor keeps reading the high byte of the IRQ vector
+            self.read(0xFFFF);
+            return false;
+        }
+
         if self.poll_interrupts() {
             return true;
         }
@@ -130,9 +147,24 @@ impl<B: CpuBus> CPU<B> {
         }
     }
 
+    /// The twelve JAM/KIL opcodes: after the operand fetch the processor reads $FFFF, $FFFE, $FFFE and $FFFF
+    /// forever. We do the first few of these cycles and stay frozen until `reset`.
+    fn jam(&mut self) {
+        self.read(self.program_counter);
+        for address in [0xFFFF, 0xFFFE, 0xFFFE, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF] {
+            self.read(address);
+        }
+        self.jammed = true;
+    }
+
     /// Fetches and executes one instruction (no interrupt polling).
     fn execute_next(&mut self) -> bool {
         let operation_code = self.fetch();
+
+        if JAM_OPCODES.contains(&operation_code) {
+            self.jam();
+            return false;
+        }
 
         let Some(op) = CPU_OPERATION_TABLE[operation_code as usize] else {
             log::warn!("unknown operation code {:#04X}", operation_code);
@@ -447,12 +479,13 @@ impl<B: CpuBus> CPU<B> {
             }),
             Mnemonic::XAA => {
                 let value = self.read_operand(mode);
-                self.set_register_a(self.register_x & value)
+                self.set_register_a((self.register_a | XAA_MAGIC) & self.register_x & value)
             }
             Mnemonic::LXA => {
                 let value = self.read_operand(mode);
-                self.register_a = value;
-                self.set_register_x(value);
+                let result = (self.register_a | LXA_MAGIC) & value;
+                self.register_a = result;
+                self.set_register_x(result);
             }
             Mnemonic::LAS => {
                 let value = self.read_operand(mode);
@@ -1046,6 +1079,30 @@ mod test {
         setup(&mut cpu);
         cpu.interpret_for_test(get_program_end(cpu.program_counter, program.len()), true);
         cpu
+    }
+
+    #[test]
+    fn a_jam_opcode_freezes_the_processor_until_reset() {
+        let mut bus = MockBus::new();
+        bus.load_program(&[0x02, 0xEA, 0xEA], 0x8000);
+        bus.memory[0xFFFC] = 0x00;
+        bus.memory[0xFFFD] = 0x80;
+        let mut cpu = CPU::new(bus);
+        cpu.program_counter = 0x8000;
+
+        assert!(!cpu.step(), "the JAM does not complete");
+        let frozen_at = (cpu.program_counter, cpu.cycles);
+        assert_eq!(frozen_at.0, 0x8001, "the opcode was fetched, the operand not consumed");
+        assert_eq!(frozen_at.1, 11, "opcode, operand and the first reads of the frozen bus");
+
+        assert!(!cpu.step());
+        assert_eq!(cpu.program_counter, 0x8001, "it stays on the same address");
+        assert_eq!(cpu.cycles, 12, "but time keeps passing");
+
+        cpu.reset();
+        assert_eq!(cpu.program_counter, 0x8000);
+        cpu.program_counter = 0x8001;
+        assert!(cpu.step(), "a reset unfreezes it");
     }
 
     #[test]

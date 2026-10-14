@@ -673,6 +673,7 @@ dependencies = [
  "postcard",
  "serde",
  "serde-big-array",
+ "serde_json",
 ]
 
 [[package]]

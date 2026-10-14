@@ -8,4 +8,4 @@ test_rom/blargg/
 /*.png
 .games
 *.state
-.games
+test_rom/singlestep/
