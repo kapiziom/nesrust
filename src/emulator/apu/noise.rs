@@ -25,9 +25,9 @@ impl Default for Noise {
 
 impl Noise {
     pub fn new(region: Region) -> Self {
-        let periods = if region == Region::Pal { &PAL_PERIODS } else { &NTSC_PERIODS };
+        let periods = if region.pal_apu_tables() { &PAL_PERIODS } else { &NTSC_PERIODS };
         Noise {
-            pal: region == Region::Pal,
+            pal: region.pal_apu_tables(),
             timer: Timer::with_period(periods[0] - 1),
             lfsr: 1,
             short_mode: false,

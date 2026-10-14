@@ -13,7 +13,6 @@ pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
 
 const DOTS_PER_SCANLINE: u16 = 341;
-const VBLANK_LINE: u16 = 241;
 
 const CTRL_NMI_ENABLE: u8 = 0x80;
 const CTRL_SPRITE_SIZE: u8 = 0x20;
@@ -282,7 +281,7 @@ impl PPU {
         let (value, driven) = match register & 7 {
             // PPUSTATUS: low bits are open bus; reading clears vblank and the write latch
             2 => {
-                if self.scanline == VBLANK_LINE && self.dot == 1 {
+                if self.scanline == self.region.vblank_scanline() && self.dot == 1 {
                     self.suppress_vblank = true;
                 }
                 let value = (self.status & 0xE0) | (self.latch() & 0x1F);
@@ -477,7 +476,7 @@ impl PPU {
         let pre_render = self.scanline == self.pre_render_line();
         self.read_buffer_busy = self.read_buffer_busy.saturating_sub(1);
 
-        if self.scanline == VBLANK_LINE && self.dot == 1 {
+        if self.scanline == self.region.vblank_scanline() && self.dot == 1 {
             if !std::mem::take(&mut self.suppress_vblank) {
                 self.status |= STATUS_VBLANK;
                 self.update_nmi();

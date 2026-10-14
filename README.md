@@ -25,7 +25,7 @@
   Passes Blargg's `apu_test` and `blargg_apu_2005` suites and the DMC DMA tests.
 
 ### Regions
-- **NTSC and PAL** timing, chosen from the cartridge header (60.1 / 50.0 frames per second).
+- **NTSC, PAL and Dendy** timing, chosen from the cartridge header (60.1 / 50.0 / 50.0 frames per second).
 
 ### PPU
 - Dot-accurate **2C02**: registers, scrolling, background and sprites (8x8/8x16, sprite 0 hit, overflow), NMI/VBL timing,

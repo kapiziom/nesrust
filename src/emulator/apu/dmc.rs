@@ -49,9 +49,9 @@ impl Default for Dmc {
 
 impl Dmc {
     pub fn new(region: Region) -> Self {
-        let rates = if region == Region::Pal { &PAL_RATES } else { &NTSC_RATES };
+        let rates = if region.pal_apu_tables() { &PAL_RATES } else { &NTSC_RATES };
         Dmc {
-            pal: region == Region::Pal,
+            pal: region.pal_apu_tables(),
             irq_enabled: false,
             looping: false,
             // the DMC timer runs on the APU clock (every other CPU cycle): its first firing falls on an even cycle

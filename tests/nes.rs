@@ -12,10 +12,15 @@ fn nes_with(program: &[u8], nmi: u16, reset: u16) -> Nes {
 
 /// Same, flagged as a PAL cartridge in its NES 2.0 header (byte 12 = 1) when `pal` is set.
 fn nes_with_region(program: &[u8], nmi: u16, reset: u16, pal: bool) -> Nes {
+    nes_with_region_code(program, nmi, reset, pal as u8)
+}
+
+/// Same with any NES 2.0 CPU/PPU timing value (0 NTSC, 1 PAL, 3 Dendy).
+fn nes_with_region_code(program: &[u8], nmi: u16, reset: u16, code: u8) -> Nes {
     let mut data = vec![0u8; 16 + 16384 + 8192];
-    if pal {
+    if code != 0 {
         data[7] = 0x08; // NES 2.0
-        data[12] = 1;
+        data[12] = code;
     }
     data[0..4].copy_from_slice(b"NES\x1A");
     data[4] = 1;
@@ -320,4 +325,46 @@ fn pal_audio_has_the_requested_sample_rate_per_second_of_console_time() {
 
     // 50 frames = 0.99986 s of PAL time
     assert!((samples.len() as f64 - 48_000.0 * 50.0 / 50.007).abs() < 20.0, "{} samples", samples.len());
+}
+
+#[test]
+fn a_dendy_console_has_pal_frames_but_3_ppu_dots_per_cpu_cycle() {
+    let mut nes = nes_with_region_code(&[0x4C, 0x00, 0x80], 0x8000, 0x8000, 3);
+    assert_eq!(nes.region(), Region::Dendy);
+
+    nes.run_frame();
+    let start = nes.cpu.cycles;
+    for _ in 0..50 {
+        nes.run_frame();
+    }
+    let cycles = (nes.cpu.cycles - start) as f64;
+
+    // 312 * 341 dots / 3 dots per cycle = 35464 CPU cycles per frame, at 1773447.5 Hz: 50.007 Hz
+    assert!((cycles / 50.0 - 35_464.0).abs() < 4.0, "a Dendy frame took {} CPU cycles", cycles / 50.0);
+    let seconds = cycles / Region::Dendy.cpu_clock_hz();
+    assert!((seconds - 50.0 / 50.007).abs() < 0.005, "50 Dendy frames took {seconds} s");
+}
+
+#[test]
+fn dendy_vblank_and_nmi_come_50_lines_later_than_on_ntsc() {
+    #[rustfmt::skip]
+    let program = [
+        0xA9, 0x80, 0x8D, 0x00, 0x20, // LDA #$80 : STA $2000 (NMI on)
+        0x4C, 0x05, 0x80,             // spin
+        0xE6, 0x00,                   // NMI at $8008: INC $00
+        0x40,                         // RTI
+    ];
+    let cycles_until_the_first_nmi = |mut nes: Nes| {
+        while nes.cpu.peek(0) == 0 {
+            assert!(nes.cpu.step());
+        }
+        nes.cpu.cycles
+    };
+
+    let ntsc = cycles_until_the_first_nmi(nes_with(&program, 0x8008, 0x8000));
+    let dendy = cycles_until_the_first_nmi(nes_with_region_code(&program, 0x8008, 0x8000, 3));
+
+    // 50 extra post-render lines of 341 dots at 3 dots per cycle
+    let expected = 50.0 * 341.0 / 3.0;
+    assert!(((dendy - ntsc) as f64 - expected).abs() < 12.0, "NTSC {ntsc}, Dendy {dendy}");
 }

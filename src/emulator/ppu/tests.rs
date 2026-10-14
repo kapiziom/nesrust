@@ -809,6 +809,38 @@ fn the_pal_pre_render_line_is_311() {
     assert_eq!(ppu.region(), Region::Pal);
 }
 
+#[test]
+fn dendy_has_51_post_render_lines_and_sets_vblank_on_line_291() {
+    let mut cart = cartridge(true);
+    let mut ppu = PPU::with_region(Region::Dendy);
+
+    tick_until(&mut ppu, &mut cart, |ppu| ppu.status & STATUS_VBLANK != 0);
+    assert_eq!((ppu.scanline(), ppu.dot()), (291, 2));
+
+    ppu.status |= STATUS_SPRITE_ZERO_HIT;
+    tick_until(&mut ppu, &mut cart, |ppu| ppu.scanline() == 311 && ppu.dot() == 2);
+    assert_eq!(ppu.status, 0, "the pre-render line is 311, as on PAL");
+}
+
+#[test]
+fn a_dendy_frame_has_312_lines_of_3_dots_per_cpu_cycle_and_no_odd_frame_skip() {
+    let mut cart = cartridge(true);
+    let mut ppu = PPU::with_region(Region::Dendy);
+    write(&mut ppu, &mut cart, 1, MASK_BACKGROUND);
+
+    let mut dots = 0u32;
+    for _ in 0..2 {
+        tick_until(&mut ppu, &mut cart, |ppu| ppu.scanline() == 0 && ppu.dot() == 10);
+        for _ in 0..(312 * 341) {
+            ppu.tick(&mut cart);
+            dots += 1;
+        }
+    }
+
+    assert_eq!(dots, 2 * 312 * 341);
+    assert_eq!((ppu.scanline(), ppu.dot()), (0, 10), "every frame has exactly 312 * 341 dots");
+}
+
 // ---- I/O latch decay ------------------------------------------------------------------------------------------
 
 #[test]

@@ -70,7 +70,7 @@ impl Default for FrameCounter {
 impl FrameCounter {
     pub fn new(region: Region) -> Self {
         FrameCounter {
-            steps: if region == Region::Pal { PAL } else { NTSC },
+            steps: if region.pal_apu_tables() { PAL } else { NTSC },
             position: 0,
             five_step: false,
             irq_inhibit: false,

@@ -107,10 +107,14 @@ impl INesFile {
             return Err(CartridgeError::Truncated { expected, actual: data.len() });
         }
 
-        // NES 2.0: 0 = NTSC, 1 = PAL, 2 = works on both (NTSC is used), 3 = Dendy (not emulated; NTSC is used).
+        // NES 2.0: 0 = NTSC, 1 = PAL, 2 = works on both (NTSC is used), 3 = Dendy.
         // iNES 1: bit 0 of byte 9 marks PAL, though many dumps never set it.
         let region = if nes2 {
-            if data[12] & 0x03 == 1 { Region::Pal } else { Region::Ntsc }
+            match data[12] & 0x03 {
+                1 => Region::Pal,
+                3 => Region::Dendy,
+                _ => Region::Ntsc,
+            }
         } else if data[9] & 0x01 != 0 {
             Region::Pal
         } else {
@@ -283,6 +287,10 @@ mod tests {
         let mut nes2_pal = rom_file(1, 1, 0, 0x08);
         nes2_pal[12] = 1;
         assert_eq!(INesFile::parse(&nes2_pal).unwrap().region, Region::Pal);
+
+        let mut nes2_dendy = rom_file(1, 1, 0, 0x08);
+        nes2_dendy[12] = 3;
+        assert_eq!(INesFile::parse(&nes2_dendy).unwrap().region, Region::Dendy);
 
         let mut nes2_multi = rom_file(1, 1, 0, 0x08);
         nes2_multi[12] = 2;
