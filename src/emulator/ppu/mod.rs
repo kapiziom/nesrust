@@ -690,6 +690,7 @@ fn nametable_offset(address: u16, mirroring: Mirroring) -> usize {
         Mirroring::SingleScreenLower => 0,
         Mirroring::SingleScreenUpper => 1,
         Mirroring::FourScreen => table,
+        Mirroring::Custom(pages) => pages[table] as usize & 3,
     };
     page * 0x400 + (address as usize & 0x3FF)
 }

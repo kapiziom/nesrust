@@ -120,7 +120,7 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         1 => Box::new(mmc1::Mmc1::new(file)),
         2 => Box::new(uxrom::Uxrom::new(file)),
         3 => Box::new(cnrom::Cnrom::new(file)),
-        4 | 206 => Box::new(mmc3::Mmc3::new(file)),
+        4 | 76 | 88 | 95 | 118 | 119 | 154 | 206 => Box::new(mmc3::Mmc3::new(file)),
         7 => Box::new(axrom::Axrom::new(file)),
         9 | 10 => Box::new(mmc2::Mmc2::new(file)),
         11 | 66 | 72 | 78 | 79 | 87 | 89 | 92 | 93 | 94 | 97 | 140 | 152 | 180 | 184 | 185 => {
@@ -266,8 +266,8 @@ mod tests {
 
     /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
     const ALL_MAPPERS: &[u16] = &[
-        0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 72, 78, 79, 87, 89, 92, 93, 94, 97, 140,
-        152, 180, 184, 185, 206,
+        0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 72, 76, 78, 79, 87, 88, 89, 92, 93, 94,
+        95, 97, 118, 119, 140, 152, 154, 180, 184, 185, 206,
     ];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.
@@ -279,7 +279,7 @@ mod tests {
         for addr in (0u16..0x2000).step_by(0x1D3) {
             seen.push(mapper.ppu_read(addr));
         }
-        seen.push(mapper.mirroring() as u8);
+        seen.extend(format!("{:?}", mapper.mirroring()).bytes());
         seen.push(mapper.irq_pending() as u8);
         seen
     }

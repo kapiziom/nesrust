@@ -10,4 +10,6 @@ pub enum Mirroring {
     SingleScreenUpper,
     /// The cartridge supplies extra VRAM, giving four independent nametables.
     FourScreen,
+    /// Every nametable has its own 1KB page of VRAM (0-3): boards that pick the page per nametable (TxSROM, MMC5).
+    Custom([u8; 4]),
 }

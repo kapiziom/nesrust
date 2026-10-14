@@ -883,3 +883,14 @@ fn ppustatus_low_bits_come_from_the_decaying_latch() {
     ppu.frame += LATCH_DECAY_FRAMES;
     assert_eq!(read(&mut ppu, &mut cart, 2) & 0x1F, 0x00);
 }
+
+#[test]
+fn custom_mirroring_maps_each_nametable_to_its_own_page() {
+    let mirroring = Mirroring::Custom([1, 0, 3, 1]);
+
+    assert_eq!(nametable_offset(0x2005, mirroring), 0x400 + 5);
+    assert_eq!(nametable_offset(0x2405, mirroring), 5);
+    assert_eq!(nametable_offset(0x2805, mirroring), 3 * 0x400 + 5);
+    assert_eq!(nametable_offset(0x2C05, mirroring), 0x400 + 5);
+    assert_eq!(nametable_offset(0x3C05, mirroring), 0x400 + 5, "$3000-$3EFF mirror $2000-$2EFF");
+}
