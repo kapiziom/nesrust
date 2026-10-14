@@ -3,18 +3,26 @@
 
 mod a12_counter;
 mod axrom;
+mod bandai_fcg;
 mod bnrom;
 mod camerica;
 mod cnrom;
 mod discrete;
 mod fme7;
+mod irem;
+mod jaleco_ss88006;
 mod mmc1;
 mod mmc2;
 mod mmc3;
+mod namco175_340;
 mod nrom;
+mod sunsoft3;
 mod sunsoft5b;
+mod taito;
 mod uxrom;
+mod vrc1;
 mod vrc2_4;
+mod vrc3;
 mod vrc6;
 mod vrc_irq;
 
@@ -129,6 +137,14 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
         }
         21 | 22 | 23 | 25 => Box::new(vrc2_4::Vrc2_4::new(file)),
         24 | 26 => Box::new(vrc6::Vrc6::new(file)),
+        75 => Box::new(vrc1::Vrc1::new(file)),
+        73 => Box::new(vrc3::Vrc3::new(file)),
+        32 | 65 => Box::new(irem::Irem::new(file)),
+        33 | 48 | 80 | 207 => Box::new(taito::Taito::new(file)),
+        18 => Box::new(jaleco_ss88006::JalecoSs88006::new(file)),
+        67 => Box::new(sunsoft3::Sunsoft3::new(file)),
+        210 => Box::new(namco175_340::Namco175340::new(file)),
+        16 | 159 => Box::new(bandai_fcg::BandaiFcg::new(file)),
         34 => Box::new(bnrom::Bnrom::new(file)),
         69 => Box::new(fme7::Fme7::new(file)),
         71 => Box::new(camerica::Camerica::new(file)),
@@ -267,8 +283,8 @@ mod tests {
 
     /// Every mapper number `create` accepts; add new ones here so they get the save state round trip test.
     const ALL_MAPPERS: &[u16] = &[
-        0, 1, 2, 3, 4, 7, 9, 10, 11, 21, 22, 23, 24, 25, 26, 34, 66, 69, 71, 72, 76, 78, 79, 87, 88, 89, 92, 93, 94,
-        95, 97, 118, 119, 140, 152, 154, 180, 184, 185, 206,
+        0, 1, 2, 3, 4, 7, 9, 10, 11, 16, 18, 21, 22, 23, 24, 25, 26, 32, 33, 34, 48, 65, 66, 67, 69, 71, 72, 73, 75,
+        76, 78, 79, 80, 87, 88, 89, 92, 93, 94, 95, 97, 118, 119, 140, 152, 154, 159, 180, 184, 185, 206, 207, 210,
     ];
 
     /// Reads that change nothing but show the banking, the RAM and the latches.
