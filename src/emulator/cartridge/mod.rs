@@ -28,7 +28,9 @@ fn checksum<'a>(bytes: impl Iterator<Item = &'a u8>) -> u32 {
 impl Cartridge {
     /// An empty NROM cartridge that stands in for the real one while a save state is being deserialized.
     pub(crate) fn placeholder() -> Self {
-        Self::from_bytes(&[b'N', b'E', b'S', 0x1A, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].iter().copied().chain(std::iter::repeat(0).take(16 * 1024)).collect::<Vec<u8>>())
+        let mut file = vec![0u8; 16 + 16 * 1024];
+        file[..5].copy_from_slice(&[b'N', b'E', b'S', 0x1A, 1]);
+        Self::from_bytes(&file)
             .expect("a minimal NROM file is valid")
     }
 

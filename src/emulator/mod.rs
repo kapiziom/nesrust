@@ -7,3 +7,4 @@ pub mod ram;
 pub mod region;
 pub mod cartridge;
 pub mod nes;
+pub mod rewind;

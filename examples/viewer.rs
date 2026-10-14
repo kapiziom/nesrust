@@ -5,7 +5,7 @@
 //!
 //! Keys:  arrows = D-pad   X = A   Z = B   Enter = Start   Right Shift / Backspace = Select
 //!        P = pause   R = reset   Tab (hold) = 4x speed   F12 = screenshot (PNG in the current directory)   Esc = quit
-//!        F5 = save state   F9 = load state (`<rom>.state` next to the ROM)
+//!        F5 = save state   F9 = load state (`<rom>.state` next to the ROM)   W (hold) = rewind (the last 10 seconds)
 //!
 //! The window can be resized by dragging its edges. The audio buffer paces the emulation (if there is no sound
 //! device the window's refresh rate does).
@@ -22,6 +22,7 @@ use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
 use nesrs::emulator::cartridge::Cartridge;
 use nesrs::emulator::controller::Buttons;
 use nesrs::emulator::nes::Nes;
+use nesrs::emulator::rewind::Rewind;
 use nesrs::emulator::ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 const KEY_MAP: [(Key, Buttons); 9] = [
@@ -40,6 +41,8 @@ const KEY_MAP: [(Key, Buttons); 9] = [
 const TARGET_FPS: usize = 60;
 const VOLUME: f32 = 0.8;
 const FAST_FORWARD_FRAMES: usize = 4;
+/// Frames of history kept for rewinding (10 seconds at 60 Hz).
+const REWIND_FRAMES: usize = 600;
 const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 fn main() {
@@ -117,6 +120,8 @@ fn main() {
     let mut pixels = vec![0u32; SCREEN_WIDTH * SCREEN_HEIGHT];
     let mut paused = false;
     let mut stopped = false;
+    let mut rewind = Rewind::new(REWIND_FRAMES);
+    let mut last_rewind_step = Instant::now();
     let mut frames_counted = 0u32;
     let mut fps_timer = Instant::now();
     let mut fps = 0.0;
@@ -145,7 +150,10 @@ fn main() {
         if window.is_key_pressed(Key::F9, KeyRepeat::No) {
             match fs::read(&state_path) {
                 Ok(bytes) => match nes.load_state(&bytes) {
-                    Ok(()) => stopped = false,
+                    Ok(()) => {
+                        rewind.clear();
+                        stopped = false;
+                    }
                     Err(error) => eprintln!("cannot load the state: {error}"),
                 },
                 Err(error) => eprintln!("cannot read {}: {error}", state_path.display()),
@@ -153,6 +161,7 @@ fn main() {
         }
         if window.is_key_pressed(Key::R, KeyRepeat::No) {
             nes.reset();
+            rewind.clear();
             stopped = false;
         }
 
@@ -162,13 +171,23 @@ fn main() {
         let fast_forward = window.is_key_down(Key::Tab);
         let mut ran_a_frame = false;
 
-        if !paused && !stopped {
+        if window.is_key_down(Key::W) && !paused {
+            // one frame back per 1/60 s of real time; the sound is silent meanwhile
+            if last_rewind_step.elapsed() >= Duration::from_micros(16_667) && rewind.step_back(&mut nes) {
+                last_rewind_step = Instant::now();
+                audio_samples.clear();
+                nes.drain_audio(&mut audio_samples);
+                ran_a_frame = true;
+                stopped = false;
+            }
+        } else if !paused && !stopped {
             // with sound the audio buffer is the clock: emulate only while it is running low
             let wanted = fast_forward || audio.as_ref().map_or(true, |audio| audio.queued() < audio.target_queue);
 
             if wanted {
                 let frames = if fast_forward { FAST_FORWARD_FRAMES } else { 1 };
                 for _ in 0..frames {
+                    rewind.push(&nes);
                     if !nes.run_frame() {
                         stopped = true;
                         eprintln!("the CPU stopped on an unimplemented opcode, PC = {:#06X}", nes.cpu.program_counter);
