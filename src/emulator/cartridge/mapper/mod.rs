@@ -172,11 +172,22 @@ pub fn create(file: INesFile) -> Result<Box<dyn Mapper>, CartridgeError> {
     })
 }
 
+/// `index % len`, without the division when `len` is a power of two (it nearly always is, and this runs on every
+/// ROM, CHR and RAM access).
+#[inline(always)]
+pub(crate) fn wrap(index: usize, len: usize) -> usize {
+    if len.is_power_of_two() {
+        index & (len - 1)
+    } else {
+        index % len
+    }
+}
+
 /// Offset of `offset` inside bank number `bank`, wrapping the bank number around the chip size
 /// (so a 16KB ROM works with a mapper that addresses 256KB).
 fn bank_index(len: usize, bank_size: usize, bank: usize, offset: usize) -> usize {
     let banks = (len / bank_size).max(1);
-    ((bank % banks) * bank_size + offset) % len
+    wrap((wrap(bank, banks)) * bank_size + offset, len)
 }
 
 /// Pattern table memory: CHR-ROM, or CHR-RAM when the cartridge has no CHR-ROM. Only the RAM is part of a save state.
@@ -206,7 +217,7 @@ impl Chr {
 
     fn read(&self, index: usize) -> u8 {
         let data = self.data();
-        data[index % data.len()]
+        data[wrap(index, data.len())]
     }
 
     fn read_banked(&self, bank_size: usize, bank: usize, offset: usize) -> u8 {
@@ -217,7 +228,7 @@ impl Chr {
     fn write(&mut self, index: usize, value: u8) {
         if self.rom.is_empty() {
             let len = self.ram.len();
-            self.ram[index % len] = value;
+            self.ram[wrap(index, len)] = value;
         }
     }
 
@@ -246,14 +257,14 @@ impl PrgRam {
         if self.data.is_empty() {
             None
         } else {
-            Some(self.data[offset % self.data.len()])
+            Some(self.data[wrap(offset, self.data.len())])
         }
     }
 
     fn write(&mut self, offset: usize, value: u8) {
         if !self.data.is_empty() {
             let len = self.data.len();
-            self.data[offset % len] = value;
+            self.data[wrap(offset, len)] = value;
         }
     }
 

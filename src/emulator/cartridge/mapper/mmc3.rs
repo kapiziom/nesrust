@@ -4,7 +4,7 @@
 //! https://www.nesdev.org/wiki/MMC3, https://www.nesdev.org/wiki/INES_Mapper_118
 
 use super::a12_counter::A12Counter;
-use super::{mapper_state, Chr, Mapper, PrgRam};
+use super::{mapper_state, wrap, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -105,7 +105,7 @@ impl Mmc3 {
             _ => banks - 1,
         };
 
-        ((bank % banks) * PRG_BANK_SIZE + (addr as usize & 0x1FFF)) % self.prg_rom.len()
+        wrap(wrap(bank, banks) * PRG_BANK_SIZE + (addr as usize & 0x1FFF), self.prg_rom.len())
     }
 
     /// The 1KB CHR bank (with the board's special bits removed) behind a PPU address in $0000-$1FFF, the offset in

@@ -7,7 +7,7 @@ use emu_core::{ButtonInfo, Machine, VideoFrame};
 
 const STATE_MAGIC: [u8; 4] = *b"NSST";
 /// Bump when the layout of any serialized struct changes.
-const STATE_VERSION: u16 = 1;
+const STATE_VERSION: u16 = 3;
 
 #[derive(serde::Serialize)]
 struct SaveStateOut<'a> {

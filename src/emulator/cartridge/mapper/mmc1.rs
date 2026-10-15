@@ -1,7 +1,7 @@
 //! Mapper 1 (MMC1, SxROM): five serial writes load one of four 5-bit registers.
 //! https://www.nesdev.org/wiki/MMC1
 
-use super::{mapper_state, Chr, Mapper, PrgRam};
+use super::{mapper_state, wrap, Chr, Mapper, PrgRam};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -72,7 +72,7 @@ impl Mmc1 {
             }
         };
 
-        (outer + (bank % banks) * PRG_BANK_SIZE + (addr as usize & 0x3FFF)) % self.prg_rom.len()
+        wrap(outer + wrap(bank, banks) * PRG_BANK_SIZE + (addr as usize & 0x3FFF), self.prg_rom.len())
     }
 
     /// Byte offset in CHR memory of a PPU address.

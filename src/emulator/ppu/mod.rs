@@ -14,6 +14,48 @@ pub const SCREEN_HEIGHT: usize = 240;
 
 const DOTS_PER_SCANLINE: u16 = 341;
 
+/// What `fetch_dot` has to do on each dot of a visible or pre-render line, as flags (decided once, at compile time).
+const SHIFT_BACKGROUND: u8 = 1;
+const SHIFT_SPRITES: u8 = 2;
+const FETCH_NAMETABLE: u8 = 4;
+const FETCH_ATTRIBUTE: u8 = 8;
+const FETCH_PATTERN_LOW: u8 = 16;
+const FETCH_PATTERN_HIGH: u8 = 32;
+const INCREMENT_COARSE_X: u8 = 64;
+/// Any of the other dots that need individual attention (evaluation at 65, the Y increment at 256, the horizontal
+/// copy at 257, the vertical copy on 280-304 and the sprite pattern fetches of 257-320).
+const SPECIAL: u8 = 128;
+
+const DOT_ACTIONS: [u8; DOTS_PER_SCANLINE as usize] = {
+    let mut actions = [0u8; DOTS_PER_SCANLINE as usize];
+    let mut dot = 0usize;
+    while dot < actions.len() {
+        let mut flags = 0u8;
+        if (dot >= 2 && dot <= 257) || (dot >= 322 && dot <= 337) {
+            flags |= SHIFT_BACKGROUND;
+        }
+        if dot >= 2 && dot <= 257 {
+            flags |= SHIFT_SPRITES;
+        }
+        if (dot >= 1 && dot <= 256) || (dot >= 321 && dot <= 336) {
+            flags |= match (dot - 1) % 8 {
+                0 => FETCH_NAMETABLE,
+                2 => FETCH_ATTRIBUTE,
+                4 => FETCH_PATTERN_LOW,
+                6 => FETCH_PATTERN_HIGH,
+                7 => INCREMENT_COARSE_X,
+                _ => 0,
+            };
+        }
+        if dot == 65 || dot == 256 || (dot >= 257 && dot <= 320) || (dot >= 280 && dot <= 304) {
+            flags |= SPECIAL;
+        }
+        actions[dot] = flags;
+        dot += 1;
+    }
+    actions
+};
+
 const CTRL_NMI_ENABLE: u8 = 0x80;
 const CTRL_SPRITE_SIZE: u8 = 0x20;
 const CTRL_BACKGROUND_TABLE: u8 = 0x10;
@@ -47,6 +89,9 @@ const POWER_UP_PALETTE: [u8; 32] = [
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PPU {
     region: Region,
+    /// Derived from the region and kept next to it because the dot clock asks for them on every dot.
+    pre_render: u16,
+    vblank_scanline: u16,
 
     // registers
     ctrl: u8,
@@ -131,6 +176,8 @@ impl PPU {
     pub fn with_region(region: Region) -> Self {
         PPU {
             region,
+            pre_render: region.scanlines_per_frame() - 1,
+            vblank_scanline: region.vblank_scanline(),
             ctrl: 0,
             mask: 0,
             status: 0,
@@ -225,7 +272,7 @@ impl PPU {
 
     /// The last scanline of the frame (261 on NTSC, 311 on PAL).
     fn pre_render_line(&self) -> u16 {
-        self.region.scanlines_per_frame() - 1
+        self.pre_render
     }
 
     pub fn region(&self) -> Region {
@@ -281,7 +328,7 @@ impl PPU {
         let (value, driven) = match register & 7 {
             // PPUSTATUS: low bits are open bus; reading clears vblank and the write latch
             2 => {
-                if self.scanline == self.region.vblank_scanline() && self.dot == 1 {
+                if self.scanline == self.vblank_scanline && self.dot == 1 {
                     self.suppress_vblank = true;
                 }
                 let value = (self.status & 0xE0) | (self.latch() & 0x1F);
@@ -485,7 +532,7 @@ impl PPU {
         let pre_render = self.scanline == self.pre_render_line();
         self.read_buffer_busy = self.read_buffer_busy.saturating_sub(1);
 
-        if self.scanline == self.region.vblank_scanline() && self.dot == 1 {
+        if self.scanline == self.vblank_scanline && self.dot == 1 {
             if !std::mem::take(&mut self.suppress_vblank) {
                 self.status |= STATUS_VBLANK;
                 self.update_nmi();
@@ -521,6 +568,9 @@ impl PPU {
 
     fn advance_dot(&mut self) {
         self.dot += 1;
+        if self.dot < 340 {
+            return; // everything below happens at the end of a line
+        }
 
         // on NTSC odd frames are one dot shorter on the pre-render line (only while rendering)
         if self.scanline == self.pre_render_line()
@@ -546,42 +596,40 @@ impl PPU {
     /// Memory accesses and register updates of a visible or pre-render line.
     fn fetch_dot(&mut self, cartridge: &mut Cartridge, visible: bool, pre_render: bool) {
         let dot = self.dot;
+        let actions = DOT_ACTIONS[dot as usize];
 
-        if (2..=257).contains(&dot) || (322..=337).contains(&dot) {
+        if actions & SHIFT_BACKGROUND != 0 {
             self.shift_background();
         }
-        if visible && (2..=257).contains(&dot) {
+        if visible && actions & SHIFT_SPRITES != 0 {
             self.shift_sprites();
         }
 
-        if (1..=256).contains(&dot) || (321..=336).contains(&dot) {
-            match (dot - 1) % 8 {
-                0 => {
-                    self.reload_background_shifters();
-                    let address = 0x2000 | (self.v & 0x0FFF);
-                    self.nametable_latch = self.bus_read(cartridge, address);
+        if actions & (FETCH_NAMETABLE | FETCH_ATTRIBUTE | FETCH_PATTERN_LOW | FETCH_PATTERN_HIGH | INCREMENT_COARSE_X)
+            != 0
+        {
+            if actions & FETCH_NAMETABLE != 0 {
+                self.reload_background_shifters();
+                let address = 0x2000 | (self.v & 0x0FFF);
+                self.nametable_latch = self.bus_read(cartridge, address);
+            } else if actions & FETCH_ATTRIBUTE != 0 {
+                let address = 0x23C0 | (self.v & 0x0C00) | ((self.v >> 4) & 0x38) | ((self.v >> 2) & 0x07);
+                let mut attribute = self.bus_read(cartridge, address);
+                if (self.v >> 5) & 0x02 != 0 {
+                    attribute >>= 4;
                 }
-                2 => {
-                    let address = 0x23C0 | (self.v & 0x0C00) | ((self.v >> 4) & 0x38) | ((self.v >> 2) & 0x07);
-                    let mut attribute = self.bus_read(cartridge, address);
-                    if (self.v >> 5) & 0x02 != 0 {
-                        attribute >>= 4;
-                    }
-                    if self.v & 0x02 != 0 {
-                        attribute >>= 2;
-                    }
-                    self.attribute_latch = attribute & 0x03;
+                if self.v & 0x02 != 0 {
+                    attribute >>= 2;
                 }
-                4 => {
-                    let address = self.background_pattern_address();
-                    self.pattern_lo_latch = self.bus_read(cartridge, address);
-                }
-                6 => {
-                    let address = self.background_pattern_address() + 8;
-                    self.pattern_hi_latch = self.bus_read(cartridge, address);
-                }
-                7 => self.increment_coarse_x(),
-                _ => {}
+                self.attribute_latch = attribute & 0x03;
+            } else if actions & FETCH_PATTERN_LOW != 0 {
+                let address = self.background_pattern_address();
+                self.pattern_lo_latch = self.bus_read(cartridge, address);
+            } else if actions & FETCH_PATTERN_HIGH != 0 {
+                let address = self.background_pattern_address() + 8;
+                self.pattern_hi_latch = self.bus_read(cartridge, address);
+            } else {
+                self.increment_coarse_x();
             }
         }
 
@@ -592,18 +640,20 @@ impl PPU {
             self.update_sprite_overflow();
         }
 
-        match dot {
-            256 => self.increment_y(),
-            257 => {
-                self.copy_horizontal_bits();
-                self.prepare_next_scanline_sprites(visible);
+        if actions & SPECIAL != 0 {
+            match dot {
+                256 => self.increment_y(),
+                257 => {
+                    self.copy_horizontal_bits();
+                    self.prepare_next_scanline_sprites(visible);
+                }
+                280..=304 if pre_render => self.copy_vertical_bits(),
+                _ => {}
             }
-            280..=304 if pre_render => self.copy_vertical_bits(),
-            _ => {}
-        }
 
-        if (257..=320).contains(&dot) {
-            self.fetch_sprite_patterns(cartridge);
+            if (257..=320).contains(&dot) {
+                self.fetch_sprite_patterns(cartridge);
+            }
         }
     }
 

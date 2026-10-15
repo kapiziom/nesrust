@@ -40,6 +40,14 @@ pub struct Apu {
 
     #[serde(skip)]
     mixer: Mixer,
+    /// The mixer is only consulted when a channel's output changed since the previous cycle; $FF never occurs as
+    /// an output, so it marks the cache as empty.
+    #[serde(skip, default = "empty_output_cache")]
+    last_outputs: [u8; 5],
+    #[serde(skip)]
+    last_level: f32,
+    /// `region.cpu_clock_hz()`, asked for on every cycle.
+    cpu_clock: f64,
     filter: OutputFilter,
     sample_rate: u32,
     /// Sum and count of the mixer outputs since the last emitted sample, and the fractional position in the
@@ -49,6 +57,10 @@ pub struct Apu {
     phase: f64,
     #[serde(skip)]
     samples: Vec<f32>,
+}
+
+fn empty_output_cache() -> [u8; 5] {
+    [0xFF; 5]
 }
 
 impl Default for Apu {
@@ -76,6 +88,9 @@ impl Apu {
             cycle: 0,
             irq_line: false,
             mixer: Mixer::default(),
+            last_outputs: empty_output_cache(),
+            last_level: 0.0,
+            cpu_clock: region.cpu_clock_hz(),
             filter: OutputFilter::new(sample_rate as f32),
             sample_rate,
             accumulator: 0.0,
@@ -207,21 +222,25 @@ impl Apu {
     }
 
     fn sample(&mut self, expansion: f32) {
-        let level = self.mixer.mix(
+        let outputs = [
             self.pulse1.output(),
             self.pulse2.output(),
             self.triangle.output(),
             self.noise.output(),
             self.dmc.output(),
-        );
+        ];
+        if outputs != self.last_outputs {
+            self.last_level = self.mixer.mix(outputs[0], outputs[1], outputs[2], outputs[3], outputs[4]);
+            self.last_outputs = outputs;
+        }
+        let level = self.last_level;
 
         self.accumulator += (level + expansion) as f64;
         self.accumulated += 1;
         self.phase += self.sample_rate as f64;
 
-        let cpu_clock = self.region.cpu_clock_hz();
-        if self.phase >= cpu_clock {
-            self.phase -= cpu_clock;
+        if self.phase >= self.cpu_clock {
+            self.phase -= self.cpu_clock;
             let average = (self.accumulator / self.accumulated as f64) as f32;
             self.accumulator = 0.0;
             self.accumulated = 0;

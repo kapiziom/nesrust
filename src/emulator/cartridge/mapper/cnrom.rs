@@ -1,7 +1,7 @@
 //! Mapper 3 (CNROM): fixed PRG (16KB mirrored or 32KB), switchable 8KB CHR bank.
 //! https://www.nesdev.org/wiki/CNROM
 
-use super::{mapper_state, Chr, Mapper};
+use super::{mapper_state, wrap, Chr, Mapper};
 use crate::emulator::cartridge::ines::INesFile;
 use crate::emulator::cartridge::mirroring::Mirroring;
 
@@ -32,7 +32,7 @@ impl Mapper for Cnrom {
 
     fn cpu_read(&mut self, addr: u16) -> Option<u8> {
         match addr {
-            0x8000..=0xFFFF => Some(self.prg_rom[(addr as usize - 0x8000) % self.prg_rom.len()]),
+            0x8000..=0xFFFF => Some(self.prg_rom[wrap(addr as usize - 0x8000, self.prg_rom.len())]),
             _ => None,
         }
     }
