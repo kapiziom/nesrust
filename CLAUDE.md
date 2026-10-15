@@ -30,7 +30,7 @@ Cargo workspace (`cargo test` runs all of it):
 | `rewind` (crate `emu-core`) | `Rewind`: ring buffer of per-frame save states (`push` before `run_frame`, `step_back` to go back one frame and refresh the picture). |
 | `controller.rs` | Standard controller (`Controller`, `Buttons`): strobe latch, 8-bit shift register, ones after the 8th read. Bus routes `$4016` (strobe, shared) and `$4016`/`$4017` reads; open-bus upper bits. No Zapper / Four Score. |
 | `nes.rs` | `Nes` facade: CPU + bus; `new` (runs reset), `reset`, `run_frame`, `framebuffer`, `set_buttons(port, Buttons)`, `save_state` / `load_state` (serde + postcard; the ROM, palette, picture and audio rate stay with the running console, a state only loads into the same game; bump `STATE_VERSION` when a serialized struct changes; every mapper derives serde, keeps its ROM in `#[serde(skip)]` fields and uses `mapper_state!()`). Entry point for frontends and test runners. |
-| `examples/viewer.rs` | Minimal windowed viewer for manual testing (minifb + cpal + gilrs, dev-dependencies so the library stays I/O-free): keyboard input, sound (the audio buffer paces the emulation), pause/reset/4x speed, PNG screenshots (also headless: `--screenshot out.png --frames N --press start`), `.sav` battery files, F5/F9 save/load state (`.state`), hold W to rewind 10 s, gamepad via gilrs. `VIEWER_DEBUG=1` prints the real emulation and audio device rates; headless mode can record a `--wav`. |
+| `examples/viewer.rs` | Minimal windowed viewer for manual testing (minifb + cpal + gilrs, dev-dependencies so the library stays I/O-free): keyboard input, sound (the audio buffer paces the emulation), pause/reset/4x speed, PNG screenshots (also headless: `--screenshot out.png --frames N --press start`), `.sav` battery files, F5/F9 save/load state in slots 1-4 (`.state`, `.state2` ...), hold W to rewind 10 s, two players (keyboard and gamepads via gilrs), M/-/= sound, `--scale`, `--palette`. `VIEWER_DEBUG=1` prints the real emulation and audio device rates; headless mode can record a `--wav`. |
 
 ## Commands
 
@@ -42,7 +42,9 @@ cargo test cpu::              # a subset by path
 cargo clippy --all-targets    # lint; currently warning-free, keep it that way
 cargo fmt                     # format (rustfmt.toml: 120 columns, max small-heuristics; keep it clean)
 cargo clean                   # run when target/ grows to several GB (check with: du -sh target); next build is a full rebuild
-cargo run --release --example viewer -- game.nes   # play / inspect a ROM in a window
+cargo run --release --example viewer -- game.nes   # play / inspect a ROM in a window (--record/--replay FILE for input recordings)
+cargo run --release --example gamecheck -- game.nes --bot mash   # play headless, PNGs + contact sheet in target/gamecheck/, report
+cargo run --release --example bench              # speed of the CPU, APU and the whole console
 ```
 
 ## Conventions
@@ -60,6 +62,9 @@ cargo run --release --example viewer -- game.nes   # play / inspect a ROM in a w
 - Comments explain *why* (hardware quirk, source), not what.
 
 ## Testing & reference material
+
+- Performance work: measure with `bench` (best of 7; the machine is noisy, compare A/B in the same minute), profile by sampling if needed, and keep the fingerprints printed by `gamecheck` (hashes of every picture and of all the audio of a scripted run) unchanged: an optimisation must not alter the output. Divisions in hot paths cost (use `mapper::wrap`).
+- `src/harness.rs` has the bots (`MashBot`, `RunRightBot`, `ScriptBot`), `run` and `Report`; `tests/games.rs` plays every ROM in `.games/` with them (no CPU stop, changing picture, determinism). Look at the PNGs from `gamecheck` to judge a mapper by eye: wrong banks show as garbage graphics.
 
 - Primary CPU oracle: **nestest** (`nestest.nes` + `nestest.log`, run from `$C000` with PC override, compare per-instruction log incl. cycles). Then **SingleStepTests/65x02** (`tests/singlestep.rs`, files from `test_rom/download_singlestep.ps1`, git-ignored): per-opcode random states with the exact bus trace. (Klaus Dormann's functional test needs decimal mode, which the 2A03 lacks, so it was skipped.)
 - Blargg test ROMs (`instr_test-v5`, `cpu_interrupts_v2`, `ppu_vbl_nmi`, `ppu_sprite_hit`, `apu_test`, …) report status via `$6000` — a headless runner should poll that.

@@ -53,9 +53,26 @@
 cargo run --release --example viewer -- path/to/game.nes
 ```
 
-Arrows = D-pad, X = A, Z = B, Enter = Start, Right Shift / Backspace = Select, P = pause, R = reset,
-Tab (hold) = 4x speed, F12 = screenshot (PNG), Esc = quit. Battery RAM is stored in `<rom>.sav`. There is sound; the audio buffer paces the emulation.
+Player 1: arrows = D-pad, X = A, Z = B, Enter = Start, Right Shift / Backspace = Select. Player 2: I J K L = D-pad,
+O = A, U = B, 9 = Start, 8 = Select. Gamepads (gilrs): the first plays as player 1, the second as player 2.
+P = pause, R = reset, Tab (hold) = 4x speed, W (hold) = rewind, F12 = screenshot (PNG), M = mute, - / = volume,
+F5 / F9 = save / load state in the slot chosen with 1-4, Esc = quit. Options: `--scale 1|2|4|8`, `--palette file.pal`,
+`--record` / `--replay file`. Battery RAM is stored in `<rom>.sav`. There is sound; the audio buffer paces the emulation.
 For a headless screenshot: `... -- game.nes --screenshot out.png --frames 120 --press start`.
+
+## 🤖 Playing without a person
+
+`gamecheck` plays a ROM headless with a bot, writes pictures of several moments plus a contact sheet and prints a report
+(did the CPU stop, did the picture and the sound change, how fast it ran):
+
+```
+cargo run --release --example gamecheck -- game.nes --bot mash --frames 1800
+```
+
+Bots: `mash` (random buttons), `run-right` (taps Start, then runs right and jumps), `idle`, `script:FILE` (a recording).
+Record your own play with `viewer game.nes --record play.in` and replay it with `--replay play.in` or
+`gamecheck ... --bot script:play.in`. `tests/games.rs` runs such sessions on every ROM in `.games/` (determinism,
+no CPU stop, a changing picture). `cargo run --release --example bench` measures how fast the parts run.
 
 ## 🧪 Tests
 

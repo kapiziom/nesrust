@@ -2,8 +2,11 @@
 //! A machine takes input and produces pictures and sound; it does no I/O of its own, so one frontend can drive
 //! any console that implements [`Machine`].
 
+pub mod input_script;
+pub mod png;
 pub mod rewind;
 
+pub use input_script::InputScript;
 pub use rewind::Rewind;
 
 /// A save state could not be restored.
